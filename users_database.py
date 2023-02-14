@@ -3,3 +3,4 @@ class UsersDatabase:
         self.database = {}
 
     def create_user(self, username, address: tuple):
+        pass
