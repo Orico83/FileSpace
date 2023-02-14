@@ -17,8 +17,9 @@ while True:
     username = user[0]
     password = user[1]
     print(f"Creating user {username}")
-    # add to database
+    # add to users database
 
     message = f"User {username} created"
     client_socket.send(message.encode())
+
     client_socket.close()

@@ -10,5 +10,6 @@ username = input("Enter a username: ")
 password = input("Create password: ")
 client_socket.send(dumps([username, password]))
 
+
 message = client_socket.recv(1024).decode()
 print(message)
