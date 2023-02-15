@@ -1,5 +1,6 @@
 import socket
 from pickle import loads
+from users_database import UsersDatabase
 
 SERVER_IP = '0.0.0.0'
 PORT = 8080
@@ -13,11 +14,14 @@ print(f"server listening on {SERVER_IP}: {PORT}")
 while True:
     client_socket, addr = server_socket.accept()
     print(f"connected by {addr}")
-    user = client_socket.recv(1024)
+    user = loads(client_socket.recv(1024))
     username = user[0]
     password = user[1]
     print(f"Creating user {username}")
+    print(password)
     # add to users database
+    users_database = UsersDatabase()
+    users_database.create_user(username, (password, addr))
 
     message = f"User {username} created"
     client_socket.send(message.encode())
