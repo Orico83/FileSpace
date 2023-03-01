@@ -13,17 +13,21 @@ print(f"server listening on {SERVER_IP}: {PORT}")
 
 while True:
     client_socket, addr = server_socket.accept()
-    print(f"connected by {addr}")
-    user = loads(client_socket.recv(1024))
-    username = user[0]
-    password = user[1]
-    print(f"Creating user {username}")
-    print(password)
-    # add to users database
-    users_database = UsersDatabase()
-    users_database.create_user(username, (password, addr))
+    try:
+        print(f"connected by {addr}")
+        user = loads(client_socket.recv(1024))
+        username = user[0]
+        password = user[1]
+        print(f"Creating user {username}")
+        print(password)
+        # add to users database
+        users_database = UsersDatabase()
+        users_database.create_user(username, (password, addr))
 
-    message = f"User {username} created"
-    client_socket.send(message.encode())
-
-    client_socket.close()
+        message = f"User {username} created"
+        client_socket.send(message.encode())
+    except EOFError as err:
+        print(err)
+    finally:
+        client_socket.close()
+        print(f"Client {addr} disconnected")
