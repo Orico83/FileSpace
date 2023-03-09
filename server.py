@@ -1,33 +1,41 @@
 import socket
+import traceback
 from pickle import loads
 from users_database import UsersDatabase
+from threading import Thread
 
 SERVER_IP = '0.0.0.0'
 PORT = 8080
 QUEUE_LEN = 10
-server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-server_socket.bind((SERVER_IP, PORT))
-server_socket.listen()
+
 
 print(f"server listening on {SERVER_IP}: {PORT}")
 
-while True:
-    client_socket, addr = server_socket.accept()
+
+def handle_client(client_socket, addr):
     try:
         print(f"connected by {addr}")
-        user = loads(client_socket.recv(1024))
-        username = user[0]
-        password = user[1]
-        print(f"Creating user {username}")
-        print(password)
-        # add to users database
-        users_database = UsersDatabase()
-        users_database.create_user(username, (password, addr))
-
-        message = f"User {username} created"
-        client_socket.send(message.encode())
-    except EOFError as err:
+        while True:
+            data = loads(client_socket.recv(1024))
+            print(data)
+            if not data:
+                break
+    except ConnectionResetError as err:
         print(err)
     finally:
+        print(f"Connection closed by {addr}")
         client_socket.close()
-        print(f"Client {addr} disconnected")
+
+
+def main():
+    server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server_socket.bind((SERVER_IP, PORT))
+    server_socket.listen()
+    while True:
+        client_socket, addr = server_socket.accept()
+        thread = Thread(target=handle_client, args=(client_socket, addr))
+        thread.start()
+
+
+if __name__ == '__main__':
+    main()
