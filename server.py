@@ -3,22 +3,19 @@ import traceback
 from pickle import loads
 from threading import Thread
 import mysql.connector as mysql
+import hashlib
 
 SERVER_IP = '0.0.0.0'
 PORT = 8080
 QUEUE_LEN = 10
 
-
 db = mysql.connect(host="localhost", user="root", passwd="OC8305", database="test")
 cursor = db.cursor()
-cursor.execute("DROP TABLE users")
 
-## creating the 'users' table again with the 'PRIMARY KEY'
-cursor.execute("CREATE TABLE users (id INT(11) NOT NULL AUTO_INCREMENT PRIMARY KEY, username VARCHAR(255), password VARCHAR(255))")
-cursor.execute("DESC users")
+cursor.execute("CREATE TABLE IF NOT EXISTS users (id INT(11) NOT NULL AUTO_INCREMENT PRIMARY KEY, username VARCHAR(255)"
+               ", password VARCHAR(255))")
 
-## it will print all the columns as 'tuples' in a list
-print(cursor.fetchall())
+
 print(f"server listening on {SERVER_IP}: {PORT}")
 
 
@@ -29,7 +26,7 @@ def handle_client(client_socket, addr):
             data = loads(client_socket.recv(1024))
             print(data)
             username = data[0]
-            password = data[1]
+            password = hashlib.md5(data[1].encode()).hexdigest()
             query = "INSERT INTO users (username, password) VALUES (%s, %s)"
             values = [(username, password)]
             cursor.executemany(query, values)
