@@ -1,40 +1,35 @@
 import socket
-import traceback
 from pickle import loads
 from threading import Thread
 import mysql.connector as mysql
+import hashlib
 
 SERVER_IP = '0.0.0.0'
 PORT = 8080
 QUEUE_LEN = 10
 
-
-db = mysql.connect(host="localhost", user="root", passwd="OC8305", database="test")
+db = mysql.connect(host="localhost",
+                   user="root",
+                   passwd="OC8305",
+                   database="test")
 cursor = db.cursor()
-cursor.execute("DROP TABLE users")
 
-## creating the 'users' table again with the 'PRIMARY KEY'
-cursor.execute("CREATE TABLE users (id INT(11) NOT NULL AUTO_INCREMENT PRIMARY KEY, username VARCHAR(255), password VARCHAR(255))")
-cursor.execute("DESC users")
-
-## it will print all the columns as 'tuples' in a list
-print(cursor.fetchall())
-print(f"server listening on {SERVER_IP}: {PORT}")
+cursor.execute("CREATE TABLE IF NOT EXISTS users (id INT(11) NOT NULL AUTO_INCREMENT PRIMARY KEY, username VARCHAR(255)"
+               ", password VARCHAR(255))")
 
 
 def handle_client(client_socket, addr):
     try:
-        print(f"connected by {addr}")
+        print(f"Accepted connection from {addr}")
         while True:
             data = loads(client_socket.recv(1024))
             print(data)
             username = data[0]
-            password = data[1]
+            password = hashlib.md5(data[1].encode()).hexdigest()
             query = "INSERT INTO users (username, password) VALUES (%s, %s)"
             values = [(username, password)]
             cursor.executemany(query, values)
 
-            ## to make final output we have to run the 'commit()' method of the database object
             db.commit()
 
             print(cursor.rowcount, "records inserted")
@@ -51,6 +46,7 @@ def main():
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server_socket.bind((SERVER_IP, PORT))
     server_socket.listen()
+    print(f"Server listening on {SERVER_IP}: {PORT}")
     while True:
         client_socket, addr = server_socket.accept()
         thread = Thread(target=handle_client, args=(client_socket, addr))

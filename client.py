@@ -3,7 +3,7 @@ from pickle import dumps
 from tkinter import *
 from tkinter import ttk
 
-SERVER_IP = '127.0.0.1'
+SERVER_IP = '127.0.0.1' #'10.100.102.14'
 PORT = 8080
 client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 client_socket.connect((SERVER_IP, PORT))
@@ -37,5 +37,4 @@ button = Button(win, text="Log In", command=login)
 button.pack()
 
 win.mainloop()
-
 
