@@ -4,12 +4,14 @@ import threading
 
 import mysql
 
+FOLDER = "C:\\Users\\orico\\OneDrive\\שולחן העבודה\\FileSpace\\"
 database_config = {
     "host": "localhost",
     "user": "root",
     "password": "OC8305",
     "database": "test"
 }
+
 
 def handle_upload(client_socket):
     file_name = client_socket.recv(1024).decode()
@@ -55,7 +57,6 @@ class ClientThread(threading.Thread):
         command = data.split()[0]
         print(command)
 
-
         # Verify the username and password against the MySQL table
         mysql_connection = mysql.connector.connect(**database_config)
         mysql_cursor = mysql_connection.cursor()
@@ -89,7 +90,7 @@ class ClientThread(threading.Thread):
                 mysql_connection.commit()
                 self.client_socket.send("OK".encode())
         elif command == "download":
-            file_name = data.split()[1]
+            file_name = FOLDER + data.split()[1]
             if not os.path.exists(file_name):
                 print(f"File '{file_name}' does not exist on server.")
                 return

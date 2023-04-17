@@ -13,28 +13,42 @@ class LoginWindow(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("Login")
+        self.geometry("250x150")
 
         # Create the username and password labels and entry fields
-        tk.Label(self, text="Username").grid(row=0, column=0, padx=5, pady=5)
+        self.username_label = tk.Label(self, text="Username")
+        self.username_label.grid(row=3, column=2)
         self.username_entry = tk.Entry(self)
-        self.username_entry.grid(row=0, column=1, padx=5, pady=5)
+        self.username_entry.grid(row=3, column=3, padx=5, pady=5)
 
-        tk.Label(self, text="Password").grid(row=1, column=0, padx=5, pady=5)
+        self.password_label = tk.Label(self, text="Password")
+        self.password_label.grid(row=4, column=2)
         self.password_entry = tk.Entry(self, show="*")
-        self.password_entry.grid(row=1, column=1, padx=5, pady=5)
+        self.password_entry.grid(row=4, column=3, padx=5, pady=5)
 
         # Create the login and signup buttons
-        login_button = tk.Button(self, text="Login", command=self.login)
-        login_button.grid(row=2, column=0, padx=5, pady=5)
+        self.login_button = tk.Button(self, text="Login", command=self.login)
+        self.login_button.grid(row=6, column=2)
 
-        signup_button = tk.Button(self, text="Sign Up", command=self.signup)
-        signup_button.grid(row=2, column=1, padx=5, pady=5)
+        self.signup_button = tk.Button(self, text="Sign Up", command=self.signup)
+        self.signup_button.grid(row=6, column=3)
 
-        upload_button = tk.Button(self, text="Upload File", command=self.upload_file)
-        upload_button.grid(row=3, column=0, padx=5, pady=5)
+        self.upload_button = tk.Button(self, text="Upload File", command=self.upload_file)
+        self.upload_button.grid(row=3, column=0, padx=5, pady=5)
+        self.upload_button.grid_remove()
 
-        download_button = tk.Button(self, text="Download File", command=self.download_file)
-        download_button.grid(row=3, column=1, padx=5, pady=5)
+        self.download_button = tk.Button(self, text="Download File", command=self.download_file)
+        self.download_button.grid(row=3, column=1, padx=5, pady=5)
+        self.download_button.grid_remove()
+
+    def hide_credentials(self):
+        # Hide the username and password labels and entry fields
+        self.username_entry.grid_remove()
+        self.password_entry.grid_remove()
+        self.username_label.grid_forget()
+        self.password_label.grid_forget()
+        self.signup_button.grid_remove()
+        self.login_button.grid_remove()
 
     def login(self):
         # Get the username and password from the entry fields
@@ -57,6 +71,11 @@ class LoginWindow(tk.Tk):
         # Check the server's response and show an appropriate message
         if response == "OK":
             tk.messagebox.showinfo("Login Successful", f"Welcome, {username}!")
+            # Show the download and upload buttons
+            self.download_button.grid()
+            self.upload_button.grid()
+            # Hide the login and signup buttons
+            self.hide_credentials()
         else:
             tk.messagebox.showerror("Login Failed", "Invalid username or password")
 
@@ -81,6 +100,11 @@ class LoginWindow(tk.Tk):
         # Check the server's response and show an appropriate message
         if response == "OK":
             tk.messagebox.showinfo("Signup Successful", f"Welcome, {username}!")
+            # Show the download and upload buttons
+            self.download_button.grid()
+            self.upload_button.grid()
+            # Hide the login and signup buttons
+            self.hide_credentials()
         else:
             tk.messagebox.showerror("Signup Failed", "Username already exists")
 
