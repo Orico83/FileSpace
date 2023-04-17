@@ -1,56 +1,82 @@
-import socket
-from pickle import loads
-from threading import Thread
-import mysql.connector as mysql
 import hashlib
+import socket
+import threading
+import mysql.connector
+import os
+import shutil
+from client_thread import ClientThread
 
-SERVER_IP = '0.0.0.0'
-PORT = 8080
-QUEUE_LEN = 10
+host = "0.0.0.0"
+port = 8080
 
-db = mysql.connect(host="localhost",
-                   user="root",
-                   passwd="OC8305",
-                   database="test")
-cursor = db.cursor()
-
-cursor.execute("CREATE TABLE IF NOT EXISTS users (id INT(11) NOT NULL AUTO_INCREMENT PRIMARY KEY, username VARCHAR(255)"
-               ", password VARCHAR(255))")
+# Define the MySQL database connection parameters
+database_config = {
+    "host": "localhost",
+    "user": "root",
+    "password": "OC8305",
+    "database": "test"
+}
 
 
-def handle_client(client_socket, addr):
-    try:
-        print(f"Accepted connection from {addr}")
-        while True:
-            data = loads(client_socket.recv(1024))
-            print(data)
-            username = data[0]
-            password = hashlib.md5(data[1].encode()).hexdigest()
-            query = "INSERT INTO users (username, password) VALUES (%s, %s)"
-            values = [(username, password)]
-            cursor.executemany(query, values)
+def handle_upload(client_socket):
+    file_name = client_socket.recv(1024).decode()
+    file_size = int(client_socket.recv(1024).decode())
+    file_data = client_socket.recv(file_size)
 
-            db.commit()
+    with open(file_name, 'wb') as f:
+        f.write(file_data)
 
-            print(cursor.rowcount, "records inserted")
-            if not data:
-                break
-    except EOFError as err:
-        print(err)
-    finally:
-        print(f"Connection closed by {addr}")
-        client_socket.close()
+    print(f"File '{file_name}' uploaded to server.")
+
+
+def handle_download(client_socket):
+    file_name = client_socket.recv(1024).decode()
+
+    if not os.path.exists(file_name):
+        print(f"File '{file_name}' does not exist on server.")
+        return
+
+    file_size = os.path.getsize(file_name)
+    client_socket.send(str(file_size).encode())
+
+    with open(file_name, 'rb') as f:
+        file_data = f.read()
+
+    client_socket.sendall(file_data)
+
+    print(f"File '{file_name}' downloaded from server.")
 
 
 def main():
+    # Create the MySQL table if it doesn't exist
+    try:
+        mysql_connection = mysql.connector.connect(**database_config)
+        mysql_cursor = mysql_connection.cursor()
+        mysql_cursor.execute("CREATE TABLE IF NOT EXISTS users (id INT AUTO_INCREMENT PRIMARY KEY, username VARCHAR("
+                             "255), password VARCHAR(255))")
+        mysql_connection.commit()
+    except mysql.connector.Error as error:
+        print(f"Error creating MySQL table: {error}")
+    finally:
+        mysql_cursor.close()
+        mysql_connection.close()
+
+    # Create a new server socket
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    server_socket.bind((SERVER_IP, PORT))
+
+    # Bind the server socket to the host and port
+    server_socket.bind((host, port))
+
+    # Start listening for incoming connections
     server_socket.listen()
-    print(f"Server listening on {SERVER_IP}: {PORT}")
+
+    print(f"Server listening on {host}:{port}")
+
     while True:
-        client_socket, addr = server_socket.accept()
-        thread = Thread(target=handle_client, args=(client_socket, addr))
-        thread.start()
+        # Accept incoming connections and start a new thread for each client
+        client_socket, client_address = server_socket.accept()
+        client_thread = ClientThread(client_socket, client_address)
+        client_thread.start()
 
 
 if __name__ == '__main__':
