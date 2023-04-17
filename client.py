@@ -1,11 +1,12 @@
 import os
 import socket
 import tkinter as tk
-from tkinter import messagebox
+from tkinter import messagebox, filedialog
 import tkinter.filedialog
 import tkinter.simpledialog
+
 # Define the server host and port
-SERVER_IP = '127.0.0.1' #'10.100.102.14'
+SERVER_IP = '127.0.0.1'  # '10.100.102.14'
 PORT = 8080
 
 
@@ -111,33 +112,30 @@ class LoginWindow(tk.Tk):
     @staticmethod
     def upload_file():
         # Get the path of the file to upload
-        filepath = tk.filedialog.askopenfilename()
-
-        if not filepath:
+        # Get the file name using a file dialog
+        file_path = filedialog.askopenfilename()
+        if not file_path:
             return
 
-        # Open the file and read its contents
-        with open(filepath, 'rb') as f:
-            file_data = f.read()
+        # Get the file name and size
+        file_name = os.path.basename(file_path)
+        file_size = os.path.getsize(file_path)
 
         # Create a new socket and connect to the server
         client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         client_socket.connect((SERVER_IP, PORT))
 
-        # Send the "upload" command to the server
+        # Send the command to the server to indicate that we want to upload a file
         client_socket.send(b"upload")
 
-        # Send the filename and file size to the server
-        filename = os.path.basename(filepath)
-        file_size = len(file_data)
-        client_socket.send(f"{filename} {file_size}".encode())
-
-        # Send the file data to the server in chunks of 1024 bytes
-        bytes_sent = 0
-        while bytes_sent < file_size:
-            chunk = file_data[bytes_sent:bytes_sent + 1024]
-            client_socket.send(chunk)
-            bytes_sent += len(chunk)
+        # Send the file metadata (name and size) to the server
+        metadata = f" {file_name} {file_size}"
+        client_socket.send(metadata.encode())
+        client_socket.recv(1024).decode()
+        # Send the file data to the server
+        with open(file_path, "rb") as file:
+            data = file.read()
+            client_socket.sendall(data)
 
         # Receive the server's response
         response = client_socket.recv(1024).decode().strip()
@@ -145,15 +143,18 @@ class LoginWindow(tk.Tk):
         # Close the client socket
         client_socket.close()
 
-        # Show the server's response
-        tk.messagebox.showinfo("File Uploaded", response)
+        # Show a message box with the server's response
+        if response == "OK":
+            messagebox.showinfo("File Uploaded", f"The file '{file_name}' has been uploaded successfully.")
+        else:
+            messagebox.showerror("Upload Failed", "An error occurred while uploading the file.")
 
     @staticmethod
     def download_file():
         # Get the filename to download
-        filename = tk.simpledialog.askstring("Download File", "Enter filename:")
+        file_name = tk.simpledialog.askstring("Download File", "Enter filename:")
 
-        if not filename:
+        if not file_name:
             return
 
         # Create a new socket and connect to the server
@@ -161,7 +162,7 @@ class LoginWindow(tk.Tk):
         client_socket.connect((SERVER_IP, PORT))
 
         # Send the "download" command and filename to the server
-        client_socket.send(f"download {filename}".encode())
+        client_socket.send(f"download {file_name}".encode())
 
         # Receive the file size from the server
         file_size = int(client_socket.recv(1024).decode().strip())
@@ -177,15 +178,20 @@ class LoginWindow(tk.Tk):
 
         # Save the file to the Downloads folder
         downloads_folder = os.path.expanduser("~\\Downloads")
-        filepath = os.path.join(downloads_folder, filename.split('\\')[-1])
+        filepath = os.path.join(downloads_folder, file_name.split('\\')[-1])
         with open(filepath, 'wb') as f:
             f.write(file_data)
+        client_socket.send("a".encode())
+        response = client_socket.recv(1024).decode().strip()
 
         # Close the client socket
         client_socket.close()
 
-        # Show a message that the file has been downloaded
-        tk.messagebox.showinfo("File Downloaded", f"{filename} has been downloaded to {downloads_folder}")
+        # Show a message box with the server's response
+        if response == "OK":
+            messagebox.showinfo("File Downloaded", f"The file '{file_name}' has been downloaded successfully.")
+        else:
+            messagebox.showerror("Upload Failed", "An error occurred while downloading the file.")
 
 
 if __name__ == "__main__":

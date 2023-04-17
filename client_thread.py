@@ -102,8 +102,22 @@ class ClientThread(threading.Thread):
                 file_data = f.read()
 
             self.client_socket.sendall(bytes(file_data))
+            self.client_socket.recv(1024).decode()
+            self.client_socket.send("OK".encode())
 
             print(f"File '{file_name}' downloaded from server.")
+        elif command == "upload":
+            file_name = FOLDER + data.split()[1]
+            print(file_name)
+            file_size = int(data.split()[2])
+            self.client_socket.send("received".encode())
+            file_data = self.client_socket.recv(file_size)
+
+            with open(file_name, 'wb') as f:
+                f.write(file_data)
+
+            print(f"File '{file_name}' uploaded to server.")
+            self.client_socket.send("OK".encode())
 
         # Close the MySQL connection and client socket
         mysql_cursor.close()
@@ -111,43 +125,4 @@ class ClientThread(threading.Thread):
         self.client_socket.close()
         print(f"Connection from {self.client_address} closed")
 
-    def upload(self):
-        file_name = self.filename.get()
-        if not os.path.exists(file_name):
-            print(f"File '{file_name}' does not exist.")
-            return
 
-        file_size = os.path.getsize(file_name)
-        self.send_command(f"upload {file_name} {file_size}")
-
-        with open(file_name, 'rb') as f:
-            file_data = f.read()
-
-        self.socket.sendall(file_data)
-
-        print(f"File '{file_name}' uploaded to server.")
-
-    def download(self):
-        file_name = self.filename.get()
-        self.send_command(f"download {file_name}")
-
-        file_size = int(self.socket.recv(1024).decode())
-        file_data = self.socket.recv(file_size)
-
-        with open(file_name, 'wb') as f:
-            f.write(file_data)
-
-        print(f"File '{file_name}' downloaded from server.")
-
-    def handle_command(self, command):
-        parts = command.split()
-        if parts[0] == "exit":
-            self.running = False
-        elif parts[0] == "upload":
-            self.upload()
-        elif parts[0] == "download":
-            self.download()
-        else:
-            self.socket.sendall(command.encode())
-            response = self.socket.recv(1024).decode()
-            print(response)
