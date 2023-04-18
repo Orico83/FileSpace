@@ -4,7 +4,7 @@ import threading
 
 import mysql
 
-FOLDER = "C:\\Users\\orico\\OneDrive\\שולחן העבודה\\FileSpace\\"
+FOLDER = 'D:\\FS\\'     #"C:\\Users\\orico\\OneDrive\\שולחן העבודה\\FileSpace\\"
 database_config = {
     "host": "localhost",
     "user": "root",
@@ -90,9 +90,11 @@ class ClientThread(threading.Thread):
                 mysql_connection.commit()
                 self.client_socket.send("OK".encode())
         elif command == "download":
-            file_name = FOLDER + data.split()[1]
+            file_name = FOLDER + ' '.join(data.split()[1:])
             if not os.path.exists(file_name):
                 print(f"File '{file_name}' does not exist on server.")
+                file_name = file_name.split('\\')[-1]
+                self.client_socket.send(f"File '{file_name}' does not exist on server.".encode())
                 return
 
             file_size = os.path.getsize(file_name)
@@ -107,9 +109,9 @@ class ClientThread(threading.Thread):
 
             print(f"File '{file_name}' downloaded from server.")
         elif command == "upload":
-            file_name = FOLDER + data.split()[1]
-            print(file_name)
-            file_size = int(data.split()[2])
+            file_name = FOLDER + ' '.join(data.split()[1:-1])
+
+            file_size = int(data.split()[-1])
             self.client_socket.send("received".encode())
             file_data = self.client_socket.recv(file_size)
 

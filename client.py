@@ -52,10 +52,12 @@ class LoginWindow(tk.Tk):
         self.login_button.grid_remove()
 
     def login(self):
+
         # Get the username and password from the entry fields
         username = self.username_entry.get()
         password = self.password_entry.get()
-
+        if username == '' or password == '':
+            return
         # Create a new socket and connect to the server
         client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         client_socket.connect((SERVER_IP, PORT))
@@ -84,7 +86,8 @@ class LoginWindow(tk.Tk):
         # Get the username and password from the entry fields
         username = self.username_entry.get()
         password = self.password_entry.get()
-
+        if username == '' or password == '':
+            return
         # Create a new socket and connect to the server
         client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         client_socket.connect((SERVER_IP, PORT))
@@ -165,33 +168,34 @@ class LoginWindow(tk.Tk):
         client_socket.send(f"download {file_name}".encode())
 
         # Receive the file size from the server
-        file_size = int(client_socket.recv(1024).decode().strip())
+        file_size = client_socket.recv(1024).decode().strip()
+        if file_size.isnumeric():
+            # Receive the file data from the server in chunks of 1024 bytes
+            file_size = int(file_size)
+            file_data = b''
+            bytes_received = 0
+            while bytes_received < file_size:
+                chunk = client_socket.recv(min(1024, file_size - bytes_received))
+                file_data += chunk
+                bytes_received += len(chunk)
+                print(chunk)
 
-        # Receive the file data from the server in chunks of 1024 bytes
-        file_data = b''
-        bytes_received = 0
-        while bytes_received < file_size:
-            chunk = client_socket.recv(min(1024, file_size - bytes_received))
-            file_data += chunk
-            bytes_received += len(chunk)
-            print(chunk)
+            # Save the file to the Downloads folder
+            downloads_folder = os.path.expanduser("~\\Downloads")
+            filepath = os.path.join(downloads_folder, file_name.split('\\')[-1])
+            with open(filepath, 'wb') as f:
+                f.write(file_data)
+            client_socket.send("a".encode())
+            file_size = client_socket.recv(1024).decode().strip()
 
-        # Save the file to the Downloads folder
-        downloads_folder = os.path.expanduser("~\\Downloads")
-        filepath = os.path.join(downloads_folder, file_name.split('\\')[-1])
-        with open(filepath, 'wb') as f:
-            f.write(file_data)
-        client_socket.send("a".encode())
-        response = client_socket.recv(1024).decode().strip()
-
-        # Close the client socket
+            # Close the client socket
         client_socket.close()
 
         # Show a message box with the server's response
-        if response == "OK":
+        if file_size == "OK":
             messagebox.showinfo("File Downloaded", f"The file '{file_name}' has been downloaded successfully.")
         else:
-            messagebox.showerror("Upload Failed", "An error occurred while downloading the file.")
+            messagebox.showerror("Upload Failed", file_size)
 
 
 if __name__ == "__main__":
