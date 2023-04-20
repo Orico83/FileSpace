@@ -47,6 +47,9 @@ class Handler(FileSystemEventHandler):
             # Handle file modification
             print(f"File modified: {event.src_path}")
             upload_file(event.src_path)
+        elif event.event_type == 'moved':
+            print(f"File moved: {event.dest_path}")
+            upload_file(event.dest_path)
 
 
 def upload_file(file_path):
