@@ -3,7 +3,7 @@ import os
 
 SERVER_IP = '0.0.0.0'  # Server IP address
 PORT = 8080  # Port to listen on
-SERVER_DIR = 'C:\\Users\\orico\\OneDrive\\שולחן העבודה\\ServerFolder\\'
+SERVER_DIR = 'C:\\Users\\cyber\\Desktop\\ServerFolder\\'  # 'C:\\Users\\orico\\OneDrive\\שולחן העבודה\\ServerFolder\\'
 
 # Create a socket object
 server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -15,20 +15,22 @@ server_socket.bind((SERVER_IP, PORT))
 server_socket.listen()
 
 print(f"Server listening on {SERVER_IP}:{PORT}...")
+# Accept a new connection
+
 
 while True:
-    # Accept a new connection
     client_socket, client_address = server_socket.accept()
 
     print(f"Accepted connection from {client_address[0]}:{client_address[1]}")
-
     # Receive the client's request
     request = client_socket.recv(1024).decode().strip()
 
     # Process the request
     if request.startswith("upload"):
         # Parse the file name and size from the request
-        file_name, file_size = request.split()[1:]
+        old_name = request.split(":")[1][:-8].strip()
+        file_name = request.split(":")[2][:-4].strip()
+        file_size = request.split(":")[-1].strip()
         print(f"received file: {file_name}")
         # Convert the file size to an integer
         file_size = int(file_size)
@@ -44,6 +46,11 @@ while True:
         # Write the file to disk
         with open(SERVER_DIR + file_name, "wb") as f:
             f.write(data)
+        if old_name != file_name:
+            try:
+                os.remove(SERVER_DIR + old_name)
+            except FileNotFoundError:
+                pass
 
         # Send a response back to the client
         client_socket.send("OK".encode())
@@ -68,5 +75,13 @@ while True:
             # Send a response back to the client
             client_socket.send("ERROR: File not found".encode())
 
+    elif request.startswith("delete"):
+        file_name = ' '.join(request.split()[1:])
+        try:
+            os.remove(SERVER_DIR + file_name)
+            print(f"Deleted {file_name}")
+        except FileNotFoundError:
+            pass
+        client_socket.send("OK".encode())
     # Close the client socket
     client_socket.close()
