@@ -1,7 +1,6 @@
 import hashlib
 import os
 import threading
-
 import mysql
 
 FOLDER = 'D:\\FS\\'     #"C:\\Users\\orico\\OneDrive\\שולחן העבודה\\FileSpace\\"
@@ -64,7 +63,7 @@ class ClientThread(threading.Thread):
             # Receive the username and password from the client
             username = data.split()[1]
             print(username)
-            password = hashlib.md5(data.split()[2].encode()).hexdigest()
+            password = data.split()[2]
 
             print(password)
             mysql_cursor.execute("SELECT * FROM users WHERE username = %s AND password = %s", (username, password))
@@ -77,7 +76,7 @@ class ClientThread(threading.Thread):
             # Receive the username and password from the client
             username = data.split()[1]
             print(username)
-            password = hashlib.md5(data.split()[2].encode()).hexdigest()
+            password = data.split()[2]
 
             print(password)
             # Check if the username already exists in the table

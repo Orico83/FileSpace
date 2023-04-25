@@ -1,4 +1,5 @@
 import os
+import shutil
 import time
 import socket
 import threading
@@ -10,7 +11,7 @@ SERVER_IP = '127.0.0.1'
 PORT = 8080
 
 # Define the directory to monitor
-WATCH_DIR = 'C:\\Users\\cyber\\Desktop\\FS\\'  # 'C:\\Users\\orico\\OneDrive\\שולחן העבודה\\FileSpace'
+WATCH_DIR = 'C:\\Users\\orico\\OneDrive\\שולחן העבודה\\FS'  # 'C:\\Users\\cyber\\Desktop\\FS\\'
 
 
 # Define the directory on the server to upload files to
@@ -38,7 +39,9 @@ class Handler(FileSystemEventHandler):
     @staticmethod
     def on_any_event(event):
         if event.is_directory:
-            return None
+            # add upload folder
+            folder_name = os.path.basename(event.src_path)
+            shutil.make_archive(folder_name, 'zip', folder_name)
 
         elif event.event_type == 'moved':
             print(f"File moved: {event.dest_path}")

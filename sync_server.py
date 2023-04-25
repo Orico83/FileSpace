@@ -3,7 +3,7 @@ import os
 
 SERVER_IP = '0.0.0.0'  # Server IP address
 PORT = 8080  # Port to listen on
-SERVER_DIR = 'C:\\Users\\cyber\\Desktop\\ServerFolder\\'  # 'C:\\Users\\orico\\OneDrive\\שולחן העבודה\\ServerFolder\\'
+SERVER_DIR = 'C:\\Users\\orico\\OneDrive\\שולחן העבודה\\ServerFolder\\' #'C:\\Users\\cyber\\Desktop\\ServerFolder\\'
 
 # Create a socket object
 server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)

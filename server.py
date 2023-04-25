@@ -1,13 +1,10 @@
-import hashlib
 import socket
-import threading
 import mysql.connector
 import os
-import shutil
 from client_thread import ClientThread
 
-host = "0.0.0.0"
-port = 8080
+host = "0.0.0.0"  # Host IP address where the server will be running
+port = 8080  # Port number to bind the server socket
 
 # Define the MySQL database connection parameters
 database_config = {
@@ -19,10 +16,21 @@ database_config = {
 
 
 def handle_upload(client_socket):
+    """
+    Handles uploading a file from the client to the server.
+
+    Parameters:
+        client_socket (socket): The socket object for the client connection.
+
+    Returns:
+        None
+    """
+    # Receive the file name, file size and file data from the client
     file_name = client_socket.recv(1024).decode()
     file_size = int(client_socket.recv(1024).decode())
     file_data = client_socket.recv(file_size)
 
+    # Write the file data to disk
     with open(file_name, 'wb') as f:
         f.write(file_data)
 
@@ -30,15 +38,28 @@ def handle_upload(client_socket):
 
 
 def handle_download(client_socket):
+    """
+    Handles downloading a file from the server to the client.
+
+    Parameters:
+        client_socket (socket): The socket object for the client connection.
+
+    Returns:
+        None
+    """
+    # Receive the file name from the client
     file_name = client_socket.recv(1024).decode()
 
+    # Check if the file exists on the server
     if not os.path.exists(file_name):
         print(f"File '{file_name}' does not exist on server.")
         return
 
+    # Get the file size and send it to the client
     file_size = os.path.getsize(file_name)
     client_socket.send(str(file_size).encode())
 
+    # Read the file data and send it to the client
     with open(file_name, 'rb') as f:
         file_data = f.read()
 
