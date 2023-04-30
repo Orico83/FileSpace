@@ -13,6 +13,7 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 
 class MainWindow(object):
     def __init__(self):
+        self.menubar = None
         self.create_account_button = None
         self.create_account_label = None
         self.login_button = None

@@ -122,33 +122,7 @@ class SignupWindow(QWidget):
 
         self.setLayout(layout)
 
-    def signup(self):
-        username = self.username_input.text()
-        password = self.password_input.text()
-        # perform signup logic here
-        print("Username:", username)
-        print("Password:", password)
-        if username == '' or password == '':
-            return
-        # Create a new socket and connect to the server
-        client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        client_socket.connect((SERVER_IP, PORT))
 
-        # Send the username and password to the server for signup
-        client_socket.send(f"signup {username} {hashlib.md5(password.encode()).hexdigest()}".encode())
-
-        # Receive the server's response
-        response = client_socket.recv(1024).decode().strip()
-
-        # Close the client socket
-        client_socket.close()
-
-        # Check the server's response and show an appropriate message
-        if response == "OK":
-            print("Signup Successful", f"Welcome, {username}!")
-
-        else:
-            print("Signup Failed", "Username already exists")
 
 
 class MainWindow(QMainWindow):
