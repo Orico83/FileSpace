@@ -2,10 +2,11 @@ import hashlib
 import socket
 
 from PyQt5.QtWidgets import QApplication, QMainWindow, QWidget, QLabel, QLineEdit, QPushButton, QVBoxLayout, \
-    QHBoxLayout, QListWidget, QStatusBar, QMenuBar
+    QHBoxLayout, QListWidget, QStatusBar, QMenuBar, QDialog
 from PyQt5 import QtCore, QtGui
 import sys
 
+from PyQt5.uic import loadUi
 
 SERVER_IP = '127.0.0.1'  # '10.100.102.14'
 PORT = 8080
@@ -75,7 +76,7 @@ class MainWindow(QMainWindow):
         signup_button.setStyleSheet("color: rgb(0, 0, 255)")
         signup_button.setFlat(True)
         signup_button.setText("Sign Up")
-        signup_button.clicked.connect(self.signup)
+        signup_button.clicked.connect(self.signup_screen)
 
         self.menubar = QMenuBar(self)
         self.menubar.setGeometry(QtCore.QRect(0, 0, 460, 21))
@@ -84,33 +85,6 @@ class MainWindow(QMainWindow):
         self.statusbar = QStatusBar(self)
         self.statusbar.setObjectName("statusbar")
         self.setStatusBar(self.statusbar)
-
-    def signup(self):
-        username = self.username_input.text()
-        password = self.password_input.text()
-        if username == '' or password == '':
-            return
-        print("Username:", username)
-        print("Password:", password)
-        # Create a new socket and connect to the server
-        client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        client_socket.connect((SERVER_IP, PORT))
-
-        # Send the username and password to the server for signup
-        client_socket.send(f"signup {username} {hashlib.md5(password.encode()).hexdigest()}".encode())
-
-        # Receive the server's response
-        response = client_socket.recv(1024).decode().strip()
-
-        # Close the client socket
-        client_socket.close()
-
-        # Check the server's response and show an appropriate message
-        if response == "OK":
-            print("Signup Successful - Welcome {username}!")
-
-        else:
-            print("Signup Failed - Username already exists")
 
     def login(self):
         username = self.username_input.text()
@@ -147,6 +121,43 @@ class MainWindow(QMainWindow):
             font.setPointSize(11)
             login_fail_label.setFont(font)
             login_fail_label.setStyleSheet("color: rgb(255, 0, 0)")
+
+    def signup_screen(self):
+        SignUpScreen()
+
+
+class SignUpScreen(QDialog):
+    def __init__(self):
+        super(SignUpScreen, self).__init__()
+        loadUi("signup.ui", self)
+        self.signup_button.clicked.connect(self.signup)
+
+    def signup(self):
+        username = self.username_input.text()
+        if self.password_input.text() == self.confirm_password.text():
+            password = self.password_input.text()
+            if username == '' or password == '':
+                return
+            print("Username:", username)
+            print("Password:", password)
+            # Create a new socket and connect to the server
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client_socket:
+                client_socket.connect((SERVER_IP, PORT))
+                # Send the username and password to the server for signup
+                client_socket.send(f"signup {username} {hashlib.md5(password.encode()).hexdigest()}".encode())
+                # Receive the server's response
+                response = client_socket.recv(1024).decode().strip()
+                # Close the client socket
+                client_socket.close()
+
+            # Check the server's response and show an appropriate message
+            if response == "OK":
+                print("Signup Successful - Welcome {username}!")
+
+            else:
+                print("Signup Failed - Username already exists")
+        else:
+            print("Signup Failed - ")
 
 
 if __name__ == "__main__":
