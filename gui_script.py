@@ -167,7 +167,6 @@ class SignUpScreen(QMainWindow):
         self.password_input = QLineEdit(central_widget)
         self.password_input.setGeometry(QtCore.QRect(209, 210, 201, 31))
         self.password_input.setEchoMode(QLineEdit.Password)
-# TODO fix confirm password problem
         confirm_password_label = QLabel(central_widget)
         confirm_password_label.setGeometry(QtCore.QRect(20, 270, 171, 31))
         password_label.setText("Confirm Password")
