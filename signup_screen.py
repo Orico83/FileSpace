@@ -9,90 +9,71 @@
 
 
 from PyQt5 import QtCore, QtGui, QtWidgets
+from PyQt5.QtWidgets import QWidget, QLabel, QMainWindow, QLineEdit
 
 
-class Ui_MainWindow(object):
-    def setupUi(self, MainWindow):
-        MainWindow.setObjectName("MainWindow")
-        MainWindow.setEnabled(True)
-        MainWindow.resize(460, 600)
-        self.centralwidget = QtWidgets.QWidget(MainWindow)
-        self.centralwidget.setObjectName("centralwidget")
-        self.label = QtWidgets.QLabel(self.centralwidget)
-        self.label.setGeometry(QtCore.QRect(134, 60, 191, 51))
+class SignUpScreen(QMainWindow):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("FileSpace")
+        self.resize(460, 600)
+        self.setMouseTracking(True)
+        self.setTabletTracking(True)
+        central_widget = QWidget()
+        self.setCentralWidget(central_widget)
+
+        label = QLabel(central_widget)
+        label.setGeometry(QtCore.QRect(134, 60, 191, 51))
+        label.setText("FileSpace")
         font = QtGui.QFont()
         font.setPointSize(30)
         font.setBold(True)
-        font.setItalic(False)
         font.setWeight(75)
-        self.label.setFont(font)
-        self.label.setMouseTracking(False)
-        self.label.setObjectName("label")
-        self.username_label = QtWidgets.QLabel(self.centralwidget)
-        self.username_label.setGeometry(QtCore.QRect(50, 150, 101, 23))
+        label.setFont(font)
+
+        username_label = QLabel(central_widget)
+        username_label.setGeometry(QtCore.QRect(50, 150, 101, 23))
+        username_label.setText("Username")
         font = QtGui.QFont()
         font.setPointSize(16)
-        self.username_label.setFont(font)
-        self.username_label.setObjectName("username_label")
-        self.username_input = QtWidgets.QLineEdit(self.centralwidget)
+        username_label.setFont(font)
+
+        password_label = QLabel(central_widget)
+        password_label.setGeometry(QtCore.QRect(20, 210, 161, 31))
+        password_label.setText("Create Password")
+        font = QtGui.QFont()
+        font.setPointSize(16)
+        password_label.setFont(font)
+
+        self.username_input = QLineEdit(central_widget)
         self.username_input.setGeometry(QtCore.QRect(180, 150, 230, 31))
-        self.username_input.setObjectName("username_input")
-        self.password_input = QtWidgets.QLineEdit(self.centralwidget)
-        self.password_input.setGeometry(QtCore.QRect(209, 210, 201, 31))
-        self.password_input.setTabletTracking(False)
-        self.password_input.setAutoFillBackground(False)
-        self.password_input.setEchoMode(QtWidgets.QLineEdit.Password)
-        self.password_input.setClearButtonEnabled(False)
-        self.password_input.setObjectName("password_input")
-        self.password_label = QtWidgets.QLabel(self.centralwidget)
-        self.password_label.setGeometry(QtCore.QRect(20, 210, 161, 31))
+
+        self.password_input = QLineEdit(central_widget)
+        self.password_input.setGeometry(QtCore.QRect(209, 210, 230, 31))
+        self.password_input.setEchoMode(QLineEdit.Password)
+
+        confirm_password_label = QLabel(central_widget)
+        confirm_password_label.setGeometry(QtCore.QRect(20, 270, 171, 31))
         font = QtGui.QFont()
         font.setPointSize(16)
-        self.password_label.setFont(font)
-        self.password_label.setObjectName("password_label")
-        self.password_label_2 = QtWidgets.QLabel(self.centralwidget)
-        self.password_label_2.setGeometry(QtCore.QRect(20, 270, 171, 31))
-        font = QtGui.QFont()
-        font.setPointSize(16)
-        self.password_label_2.setFont(font)
-        self.password_label_2.setObjectName("password_label_2")
-        self.password_input_2 = QtWidgets.QLineEdit(self.centralwidget)
+        confirm_password_label.setFont(font)
+        password_label.setText("Confirm Password")
+
+        self.password_input_2 = QLineEdit(central_widget)
         self.password_input_2.setGeometry(QtCore.QRect(209, 270, 201, 31))
-        self.password_input_2.setTabletTracking(False)
-        self.password_input_2.setAutoFillBackground(False)
         self.password_input_2.setEchoMode(QtWidgets.QLineEdit.Password)
-        self.password_input_2.setClearButtonEnabled(False)
-        self.password_input_2.setObjectName("password_input_2")
-        self.login_button = QtWidgets.QPushButton(self.centralwidget)
-        self.login_button.setGeometry(QtCore.QRect(150, 350, 151, 35))
+
+        signup_button = QtWidgets.QPushButton(central_widget)
+        signup_button.setGeometry(QtCore.QRect(150, 350, 151, 35))
         font = QtGui.QFont()
         font.setPointSize(16)
-        self.login_button.setFont(font)
-        self.login_button.setObjectName("login_button")
-        MainWindow.setCentralWidget(self.centralwidget)
-        self.menubar = QtWidgets.QMenuBar(MainWindow)
-        self.menubar.setGeometry(QtCore.QRect(0, 0, 460, 21))
-        self.menubar.setObjectName("menubar")
-        MainWindow.setMenuBar(self.menubar)
-        self.statusbar = QtWidgets.QStatusBar(MainWindow)
-        self.statusbar.setObjectName("statusbar")
-        MainWindow.setStatusBar(self.statusbar)
-
-        self.retranslateUi(MainWindow)
-        QtCore.QMetaObject.connectSlotsByName(MainWindow)
-
-    def retranslateUi(self, MainWindow):
-        _translate = QtCore.QCoreApplication.translate
-        MainWindow.setWindowTitle(_translate("MainWindow", "MainWindow"))
-        self.label.setText(_translate("MainWindow", "FileSpace"))
-        self.username_label.setText(_translate("MainWindow", "Username"))
-        self.password_label.setText(_translate("MainWindow", "Create Password"))
-        self.password_label_2.setText(_translate("MainWindow", "Confirm Password"))
-        self.login_button.setText(_translate("MainWindow", "Create Account"))
+        signup_button.setFont(font)
+        signup_button.setText("Create Account")
 
 
 if __name__ == "__main__":
     import sys
+
     app = QtWidgets.QApplication(sys.argv)
     MainWindow = QtWidgets.QMainWindow()
     ui = Ui_MainWindow()
