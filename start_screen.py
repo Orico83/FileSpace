@@ -1,4 +1,6 @@
 # -*- coding: utf-8 -*-
+import hashlib
+from socket import socket
 
 # Form implementation generated from reading ui file 'StartScreen.ui'
 #
@@ -9,10 +11,16 @@
 
 
 from PyQt5 import QtCore, QtGui, QtWidgets
+from PyQt5.QtCore import Qt
+from PyQt5.QtWidgets import QLineEdit, QPushButton, QLabel, QWidget
+
+SERVER_IP = '127.0.0.1'  # '10.100.102.14'
+PORT = 8080
 
 
 class MainWindow(object):
     def __init__(self):
+        self.login_fail_label = None
         self.menubar = None
         self.create_account_button = None
         self.create_account_label = None
@@ -25,87 +33,120 @@ class MainWindow(object):
         self.centralwidget = None
 
     def setup_ui(self, main_window):
-        main_window.setObjectName("MainWindow")
+        main_window.setWindowTitle("FileSpace")
         main_window.resize(460, 600)
         main_window.setMouseTracking(True)
         main_window.setTabletTracking(True)
-        self.centralwidget = QtWidgets.QWidget(main_window)
-        self.centralwidget.setObjectName("centralwidget")
-        self.label = QtWidgets.QLabel(self.centralwidget)
-        self.label.setGeometry(QtCore.QRect(134, 60, 191, 51))
+        central_widget = QWidget()
+        main_window.setCentralWidget(central_widget)
+
+        label = QLabel(central_widget)
+        label.setGeometry(QtCore.QRect(134, 60, 191, 51))
+        label.setText("FileSpace")
         font = QtGui.QFont()
         font.setPointSize(30)
         font.setBold(True)
-        font.setItalic(False)
         font.setWeight(75)
-        self.label.setFont(font)
-        self.label.setMouseTracking(False)
-        self.label.setObjectName("label")
-        self.username_label = QtWidgets.QLabel(self.centralwidget)
-        self.username_label.setGeometry(QtCore.QRect(50, 180, 101, 23))
+        label.setFont(font)
+
+        username_label = QLabel(central_widget)
+        username_label.setGeometry(QtCore.QRect(50, 150, 101, 23))
+        username_label.setText("Username")
         font = QtGui.QFont()
         font.setPointSize(16)
-        self.username_label.setFont(font)
-        self.username_label.setObjectName("username_label")
-        self.password_label = QtWidgets.QLabel(self.centralwidget)
-        self.password_label.setGeometry(QtCore.QRect(50, 240, 101, 31))
+        username_label.setFont(font)
+
+        password_label = QLabel(central_widget)
+        password_label.setGeometry(QtCore.QRect(50, 210, 101, 31))
+        password_label.setText("Password")
         font = QtGui.QFont()
         font.setPointSize(16)
-        self.password_label.setFont(font)
-        self.password_label.setObjectName("password_label")
-        self.username_input = QtWidgets.QLineEdit(self.centralwidget)
-        self.username_input.setGeometry(QtCore.QRect(180, 180, 230, 31))
-        self.username_input.setObjectName("username_input")
-        self.password_input = QtWidgets.QLineEdit(self.centralwidget)
-        self.password_input.setGeometry(QtCore.QRect(180, 240, 230, 31))
-        self.password_input.setTabletTracking(False)
-        self.password_input.setAutoFillBackground(False)
-        self.password_input.setObjectName("password_input")
-        self.login_button = QtWidgets.QPushButton(self.centralwidget)
-        self.login_button.setGeometry(QtCore.QRect(180, 300, 100, 35))
+        password_label.setFont(font)
+
+        self.username_input = QLineEdit(central_widget)
+        self.username_input.setGeometry(QtCore.QRect(180, 150, 230, 31))
+        self.username_input.keyPressEvent = lambda event: event.ignore() if event.key() == Qt.Key_Space else \
+            QLineEdit.keyPressEvent(self.username_input, event)  # Disable space key
+
+        self.password_input = QLineEdit(central_widget)
+        self.password_input.setGeometry(QtCore.QRect(180, 210, 230, 31))
+        self.password_input.setEchoMode(QLineEdit.Password)
+        self.password_input.keyPressEvent = lambda event: event.ignore() if event.key() == Qt.Key_Space else \
+            QLineEdit.keyPressEvent(self.password_input, event)  # Disable space key
+
+        login_button = QPushButton(central_widget)
+        login_button.setGeometry(QtCore.QRect(180, 290, 100, 35))
+        login_button.setText("Log In")
         font = QtGui.QFont()
         font.setPointSize(16)
-        self.login_button.setFont(font)
-        self.login_button.setObjectName("login_button")
-        self.create_account_label = QtWidgets.QLabel(self.centralwidget)
-        self.create_account_label.setGeometry(QtCore.QRect(50, 350, 171, 41))
+        login_button.setFont(font)
+        login_button.clicked.connect(self.login)
+
+        create_account_label = QLabel(central_widget)
+        create_account_label.setGeometry(QtCore.QRect(50, 350, 171, 30))
+        create_account_label.setText("Don\'t have an account?")
         font = QtGui.QFont()
         font.setPointSize(12)
-        self.create_account_label.setFont(font)
-        self.create_account_label.setObjectName("create_account_label")
-        self.create_account_button = QtWidgets.QPushButton(self.centralwidget)
-        self.create_account_button.setGeometry(QtCore.QRect(220, 360, 121, 23))
+        create_account_label.setFont(font)
+
+        signup_button = QPushButton(central_widget)
+        signup_button.setGeometry(QtCore.QRect(220, 350, 100, 30))
         font = QtGui.QFont()
         font.setPointSize(12)
-        self.create_account_button.setFont(font)
-        self.create_account_button.setStyleSheet("color: rgb(0, 0, 255)")
-        self.create_account_button.setFlat(True)
-        self.create_account_button.setObjectName("create_account_button")
-        main_window.setCentralWidget(self.centralwidget)
-        self.menubar = QtWidgets.QMenuBar(main_window)
-        self.menubar.setGeometry(QtCore.QRect(0, 0, 460, 21))
-        self.menubar.setObjectName("menubar")
-        main_window.setMenuBar(self.menubar)
-        self.statusbar = QtWidgets.QStatusBar(main_window)
-        self.statusbar.setObjectName("statusbar")
-        main_window.setStatusBar(self.statusbar)
+        signup_button.setFont(font)
+        signup_button.setStyleSheet("color: rgb(0, 0, 255)")
+        signup_button.setFlat(True)
+        signup_button.setText("Sign Up")
 
-        self.retranslateUi(main_window)
-        QtCore.QMetaObject.connectSlotsByName(main_window)
+        self.login_fail_label = create_fail_label(central_widget, "Login Failed - Invalid username or password",
+                                                  (85, 260, 285, 18))
 
-    def retranslateUi(self, main_window):
-        _translate = QtCore.QCoreApplication.translate
-        main_window.setWindowTitle(_translate("MainWindow", "FileSpace"))
-        self.label.setText(_translate("MainWindow", "FileSpace"))
-        self.username_label.setText(_translate("MainWindow", "Username"))
-        self.password_label.setText(_translate("MainWindow", "Password"))
-        self.login_button.setText(_translate("MainWindow", "Log In"))
-        self.create_account_label.setText(_translate("MainWindow", "Don\'t have an account?"))
-        self.create_account_button.setText(_translate("MainWindow", "Create account"))
+    def login(self):
+        username = self.username_input.text()
+        password = self.password_input.text()
+        if username == '' or password == '':
+            return
+        # perform login logic here
+        print("Username:", username)
+        print("Password:", password)
+        # Create a new socket and connect to the server
+        client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        client_socket.connect((SERVER_IP, PORT))
+        # Send the username and password to the server for verification
+        client_socket.send(f"login {username} {hashlib.md5(password.encode()).hexdigest()}".encode())
+
+        # Receive the server's response
+        response = client_socket.recv(1024).decode().strip()
+
+        # Close the client socket
+        client_socket.close()
+
+        # Check the server's response and show an appropriate message
+        if response == "OK":
+            # Welcome message
+            print(f"Login Successful - Welcome, {username}!")
+
+            # Show the download and upload buttons
+        else:
+            print("Login Failed - Invalid username or password")
+            self.login_fail_label.show()
+
+
+def create_fail_label(parent, text, geometry):
+    fail_label = QtWidgets.QLabel(parent)
+    fail_label.setGeometry(QtCore.QRect(geometry[0], geometry[1], geometry[2], geometry[3]))
+    fail_label.setText(text)
+    fail_label.hide()
+    font = QtGui.QFont()
+    font.setPointSize(11)
+    fail_label.setFont(font)
+    fail_label.setStyleSheet("color: rgb(255, 0, 0)")
+    return fail_label
 
 
 if __name__ == "__main__":
     import sys
+
     app = QtWidgets.QApplication(sys.argv)
     main_win = QtWidgets.QMainWindow()
     ui = MainWindow()

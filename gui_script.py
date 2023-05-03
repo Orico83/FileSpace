@@ -4,12 +4,30 @@ import socket
 from PyQt5.QtWidgets import QApplication, QMainWindow, QWidget, QLabel, QLineEdit, QPushButton, QVBoxLayout, \
     QHBoxLayout, QListWidget, QStatusBar, QMenuBar, QDialog
 from PyQt5 import QtCore, QtGui, QtWidgets
+from PyQt5.QtCore import Qt
 import sys
 
 from PyQt5.uic import loadUi
 
 SERVER_IP = '127.0.0.1'  # '10.100.102.14'
 PORT = 8080
+
+
+def disable_key(field, key):
+    field.keyPressEvent = lambda event: event.ignore() if event.key() == key else QLineEdit.keyPressEvent(
+        field, event)
+
+
+def create_fail_label(parent, text, geometry):
+    fail_label = QtWidgets.QLabel(parent)
+    fail_label.setGeometry(QtCore.QRect(geometry[0], geometry[1], geometry[2], geometry[3]))
+    fail_label.setText(text)
+    fail_label.hide()
+    font = QtGui.QFont()
+    font.setPointSize(11)
+    fail_label.setFont(font)
+    fail_label.setStyleSheet("color: rgb(255, 0, 0)")
+    return fail_label
 
 
 class MainWindow(QMainWindow):
@@ -22,14 +40,14 @@ class MainWindow(QMainWindow):
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
 
-        label = QLabel(central_widget)
-        label.setGeometry(QtCore.QRect(134, 60, 191, 51))
-        label.setText("FileSpace")
+        title_label = QLabel(central_widget)
+        title_label.setGeometry(QtCore.QRect(134, 60, 191, 51))
+        title_label.setText("FileSpace")
         font = QtGui.QFont()
         font.setPointSize(30)
         font.setBold(True)
         font.setWeight(75)
-        label.setFont(font)
+        title_label.setFont(font)
 
         username_label = QLabel(central_widget)
         username_label.setGeometry(QtCore.QRect(50, 150, 101, 23))
@@ -47,10 +65,12 @@ class MainWindow(QMainWindow):
 
         self.username_input = QLineEdit(central_widget)
         self.username_input.setGeometry(QtCore.QRect(180, 150, 230, 31))
+        disable_key(self.username_input, Qt.Key_Space)
 
         self.password_input = QLineEdit(central_widget)
         self.password_input.setGeometry(QtCore.QRect(180, 210, 230, 31))
         self.password_input.setEchoMode(QLineEdit.Password)
+        disable_key(self.password_input, Qt.Key_Space)
 
         login_button = QPushButton(central_widget)
         login_button.setGeometry(QtCore.QRect(180, 290, 100, 35))
@@ -75,7 +95,10 @@ class MainWindow(QMainWindow):
         signup_button.setStyleSheet("color: rgb(0, 0, 255)")
         signup_button.setFlat(True)
         signup_button.setText("Sign Up")
-        signup_button.clicked.connect(self.signup_screen)
+        signup_button.clicked.connect(self.goto_signup_screen)
+
+        self.login_fail_label = create_fail_label(central_widget, "Login Failed - Invalid username or password",
+                                                  (85, 260, 285, 18))
 
         self.menubar = QMenuBar(self)
         self.menubar.setGeometry(QtCore.QRect(0, 0, 460, 21))
@@ -91,41 +114,31 @@ class MainWindow(QMainWindow):
         if username == '' or password == '':
             return
         # perform login logic here
-        print("Username:", username)
-        print("Password:", password)
+        print(f"Username: {username}")
+        print(f"Password: {password}")
         # Create a new socket and connect to the server
-        client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        client_socket.connect((SERVER_IP, PORT))
-        # Send the username and password to the server for verification
-        client_socket.send(f"login {username} {hashlib.md5(password.encode()).hexdigest()}".encode())
-
-        # Receive the server's response
-        response = client_socket.recv(1024).decode().strip()
-
-        # Close the client socket
-        client_socket.close()
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client_socket:
+            client_socket.connect((SERVER_IP, PORT))
+            # Send the username and password to the server for signup
+            client_socket.send(f"login {username} {hashlib.md5(password.encode()).hexdigest()}".encode())
+            # Receive the server's response
+            response = client_socket.recv(1024).decode().strip()
 
         # Check the server's response and show an appropriate message
         if response == "OK":
             # Welcome message
-            print("Login Successful - Welcome, {username}!")
+            print(f"Login Successful - Welcome, {username}!")
 
             # Show the download and upload buttons
         else:
             print("Login Failed - Invalid username or password")
-            login_fail_label = QLabel(self.central_widget)
-            login_fail_label.setGeometry(QtCore.QRect(90, 260, 285, 18))
-            login_fail_label.setText("Login Failed - Invalid username or password")
-            font = QtGui.QFont()
-            font.setPointSize(11)
-            login_fail_label.setFont(font)
-            login_fail_label.setStyleSheet("color: rgb(255, 0, 0)")
+            self.login_fail_label.show()
 
-    def signup_screen(self):
+    @staticmethod
+    def goto_signup_screen():
         signup = SignUpScreen()
         widget.addWidget(signup)
         widget.setCurrentIndex(widget.currentIndex() + 1)
-
 
 
 class SignUpScreen(QMainWindow):
@@ -138,14 +151,14 @@ class SignUpScreen(QMainWindow):
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
 
-        label = QLabel(central_widget)
-        label.setGeometry(QtCore.QRect(134, 60, 191, 51))
-        label.setText("FileSpace")
+        title_label = QLabel(central_widget)
+        title_label.setGeometry(QtCore.QRect(134, 60, 191, 51))
+        title_label.setText("FileSpace")
         font = QtGui.QFont()
         font.setPointSize(30)
         font.setBold(True)
         font.setWeight(75)
-        label.setFont(font)
+        title_label.setFont(font)
 
         username_label = QLabel(central_widget)
         username_label.setGeometry(QtCore.QRect(50, 150, 101, 23))
@@ -156,6 +169,7 @@ class SignUpScreen(QMainWindow):
 
         self.username_input = QLineEdit(central_widget)
         self.username_input.setGeometry(QtCore.QRect(180, 150, 230, 31))
+        disable_key(self.username_input, Qt.Key_Space)
 
         password_label = QLabel(central_widget)
         password_label.setGeometry(QtCore.QRect(20, 210, 161, 31))
@@ -167,9 +181,11 @@ class SignUpScreen(QMainWindow):
         self.password_input = QLineEdit(central_widget)
         self.password_input.setGeometry(QtCore.QRect(209, 210, 201, 31))
         self.password_input.setEchoMode(QLineEdit.Password)
+        disable_key(self.password_input, Qt.Key_Space)
+
         confirm_password_label = QLabel(central_widget)
         confirm_password_label.setGeometry(QtCore.QRect(20, 270, 171, 31))
-        password_label.setText("Confirm Password")
+        confirm_password_label.setText("Confirm Password")
         font = QtGui.QFont()
         font.setPointSize(16)
         confirm_password_label.setFont(font)
@@ -177,42 +193,61 @@ class SignUpScreen(QMainWindow):
         self.confirm_password_input = QLineEdit(central_widget)
         self.confirm_password_input.setGeometry(QtCore.QRect(209, 270, 201, 31))
         self.confirm_password_input.setEchoMode(QtWidgets.QLineEdit.Password)
+        disable_key(self.confirm_password_input, Qt.Key_Space)
 
-        signup_button = QtWidgets.QPushButton(central_widget)
-        signup_button.setGeometry(QtCore.QRect(150, 350, 151, 35))
+        create_account_button = QPushButton(central_widget)
+        create_account_button.setGeometry(QtCore.QRect(150, 350, 151, 35))
         font = QtGui.QFont()
         font.setPointSize(16)
-        signup_button.setFont(font)
-        signup_button.setText("Create Account")
+        create_account_button.setFont(font)
+        create_account_button.setText("Create Account")
 
-        signup_button.clicked.connect(self.signup)
+        back_button = QPushButton(central_widget)
+        back_button.setGeometry(QtCore.QRect(0, 0, 75, 23))
+        back_button.setText("Back")
+
+        self.signup_fail_label = create_fail_label(central_widget, "Signup Failed - Username already exists",
+                                                   (95, 320, 285, 18))
+        self.confirm_fail_label = create_fail_label(central_widget, "Signup Failed - Couldn't confirm password",
+                                                    (95, 320, 285, 18))
+
+        create_account_button.clicked.connect(self.signup)
+        back_button.clicked.connect(self.goto_mainwindow)
 
     def signup(self):
         username = self.username_input.text()
-        if self.password_input.text() == self.confirm_password.text():
-            password = self.password_input.text()
-            if username == '' or password == '':
-                return
-            print("Username:", username)
-            print("Password:", password)
-            # Create a new socket and connect to the server
-            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client_socket:
-                client_socket.connect((SERVER_IP, PORT))
-                # Send the username and password to the server for signup
-                client_socket.send(f"signup {username} {hashlib.md5(password.encode()).hexdigest()}".encode())
-                # Receive the server's response
-                response = client_socket.recv(1024).decode().strip()
-                # Close the client socket
-                client_socket.close()
+        password = self.password_input.text()
+        confirm_password = self.confirm_password_input.text()
+        if username == '' or password == '' or confirm_password == '':
+            return
+        if password != confirm_password:
+            self.signup_fail_label.hide()
+            self.confirm_fail_label.show()
+            return
+        print("Username:", username)
+        print("Password:", password)
+        # Create a new socket and connect to the server
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client_socket:
+            client_socket.connect((SERVER_IP, PORT))
+            # Send the username and password to the server for signup
+            client_socket.send(f"signup {username} {hashlib.md5(password.encode()).hexdigest()}".encode())
+            # Receive the server's response
+            response = client_socket.recv(1024).decode().strip()
 
-            # Check the server's response and show an appropriate message
-            if response == "OK":
-                print("Signup Successful - Welcome {username}!")
+        # Check the server's response and show an appropriate message
+        if response == "OK":
+            print(f"Signup Successful - Welcome {username}!")
 
-            else:
-                print("Signup Failed - Username already exists")
         else:
-            print("Signup Failed - ")
+            print("Signup Failed - Username already exists")
+            self.confirm_fail_label.hide()
+            self.signup_fail_label.show()
+
+    @staticmethod
+    def goto_mainwindow():
+        main_win = MainWindow()
+        widget.addWidget(main_win)
+        widget.setCurrentIndex(widget.currentIndex() + 1)
 
 
 if __name__ == "__main__":

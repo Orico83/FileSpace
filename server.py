@@ -1,6 +1,9 @@
-import socket
-import mysql.connector
 import os
+import socket
+
+import mysql
+import mysql.connector
+
 from client_thread import ClientThread
 
 host = "0.0.0.0"  # Host IP address where the server will be running
@@ -13,6 +16,37 @@ database_config = {
     "password": "OC8305",
     "database": "test"
 }
+
+FOLDER = 'D:\\FS\\'
+
+
+def handle_upload(client_socket):
+    file_name = client_socket.recv(1024).decode()
+    file_size = int(client_socket.recv(1024).decode())
+    file_data = client_socket.recv(file_size)
+
+    with open(file_name, 'wb') as f:
+        f.write(file_data)
+
+    print(f"File '{file_name}' uploaded to server.")
+
+
+def handle_download(client_socket):
+    file_name = client_socket.recv(1024).decode()
+
+    if not os.path.exists(file_name):
+        print(f"File '{file_name}' does not exist on server.")
+        return
+
+    file_size = os.path.getsize(file_name)
+    client_socket.send(str(file_size).encode())
+
+    with open(file_name, 'rb') as f:
+        file_data = f.read()
+
+    client_socket.sendall(file_data)
+
+    print(f"File '{file_name}' downloaded from server.")
 
 
 def handle_upload(client_socket):
