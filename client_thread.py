@@ -2,43 +2,15 @@ import hashlib
 import os
 import threading
 import mysql
+from file_classes import File, Directory
 
-FOLDER = 'D:\\FS\\'     #"C:\\Users\\orico\\OneDrive\\שולחן העבודה\\FileSpace\\"
+FOLDER = "C:\\Users\\orico\\OneDrive\\שולחן העבודה\\FileSpace\\"
 database_config = {
     "host": "localhost",
     "user": "root",
     "password": "OC8305",
     "database": "test"
 }
-
-
-def handle_upload(client_socket):
-    file_name = client_socket.recv(1024).decode()
-    file_size = int(client_socket.recv(1024).decode())
-    file_data = client_socket.recv(file_size)
-
-    with open(file_name, 'wb') as f:
-        f.write(file_data)
-
-    print(f"File '{file_name}' uploaded to server.")
-
-
-def handle_download(client_socket):
-    file_name = client_socket.recv(1024).decode()
-
-    if not os.path.exists(file_name):
-        print(f"File '{file_name}' does not exist on server.")
-        return
-
-    file_size = os.path.getsize(file_name)
-    client_socket.send(str(file_size).encode())
-
-    with open(file_name, 'rb') as f:
-        file_data = f.read()
-
-    client_socket.sendall(file_data)
-
-    print(f"File '{file_name}' downloaded from server.")
 
 
 class ClientThread(threading.Thread):
@@ -70,6 +42,8 @@ class ClientThread(threading.Thread):
             result = mysql_cursor.fetchone()
             if result:
                 self.client_socket.send("OK".encode())
+                self.handle_commands()  # Call a method to handle subsequent commands
+
             else:
                 self.client_socket.send("FAIL".encode())
         elif command == "signup":
@@ -88,37 +62,25 @@ class ClientThread(threading.Thread):
                 mysql_cursor.execute("INSERT INTO users (username, password) VALUES (%s, %s)", (username, password))
                 mysql_connection.commit()
                 self.client_socket.send("OK".encode())
-        elif command == "download":
-            file_name = FOLDER + ' '.join(data.split()[1:])
-            if not os.path.exists(file_name):
-                print(f"File '{file_name}' does not exist on server.")
-                file_name = file_name.split('\\')[-1]
-                self.client_socket.send(f"File '{file_name}' does not exist on server.".encode())
-                return
+                self.handle_commands()  # Call a method to handle subsequent commands
 
-            file_size = os.path.getsize(file_name)
-            self.client_socket.send(str(file_size).encode())
+    def handle_commands(self):
+        while True:
+            # Receive the command from the client
+            data = self.client_socket.recv(1024).decode().strip()
+            if not data:
+                break  # Exit the loop if no more data is received
+            command = data.split()[0]
 
-            with open(file_name, 'rb') as f:
-                file_data = f.read()
-
-            self.client_socket.sendall(bytes(file_data))
-            self.client_socket.recv(1024).decode()
-            self.client_socket.send("OK".encode())
-
-            print(f"File '{file_name}' downloaded from server.")
-        elif command == "upload":
-            file_name = FOLDER + ' '.join(data.split()[1:-1])
-
-            file_size = int(data.split()[-1])
-            self.client_socket.send("received".encode())
-            file_data = self.client_socket.recv(file_size)
-
-            with open(file_name, 'wb') as f:
-                f.write(file_data)
-
-            print(f"File '{file_name}' uploaded to server.")
-            self.client_socket.send("OK".encode())
+            # Add code to handle different commands here
+            if command == "command1":
+                # Handle command1
+                self.client_socket.send("Response to command1".encode())
+            elif command == "command2":
+                # Handle command2
+                self.client_socket.send("Response to command2".encode())
+            else:
+                self.client_socket.send("Invalid command".encode())
 
         # Close the MySQL connection and client socket
         mysql_cursor.close()

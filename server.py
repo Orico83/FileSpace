@@ -7,7 +7,7 @@ import mysql.connector
 from client_thread import ClientThread
 
 host = "0.0.0.0"  # Host IP address where the server will be running
-port = 8080  # Port number to bind the server socket
+port = 8080  # Port num to bind the server socket
 
 # Define the MySQL database connection parameters
 database_config = {
