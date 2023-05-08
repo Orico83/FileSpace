@@ -5,12 +5,11 @@ from pickle import loads
 
 from login_window import UiLogin
 from signup_window import UiSignup
-from PyQt5.QtWidgets import QApplication, QMainWindow, QLineEdit
+from PyQt5.QtWidgets import QApplication, QMainWindow, QLineEdit, QWidget, QFileSystemModel, QTreeView, QVBoxLayout
 from PyQt5 import QtCore, QtGui, QtWidgets
 from PyQt5.QtCore import Qt
 import sys
 from file_classes import File, Directory
-
 
 SERVER_IP = '127.0.0.1'
 PORT = 8080
@@ -32,6 +31,27 @@ def create_fail_label(parent, text, geometry):
     fail_label.setFont(font)
     fail_label.setStyleSheet("color: rgb(255, 0, 0)")
     return fail_label
+
+
+class FileSystemView(QWidget):
+    def __init__(self, dir_path):
+        super().__init__()
+        appWidth = 800
+        appHeight = 300
+        self.setWindowTitle('File System Viewer')
+        self.setGeometry(300, 300, appWidth, appHeight)
+
+        self.model = QFileSystemModel()
+        self.model.setRootPath(dir_path)
+        self.tree = QTreeView()
+        self.tree.setModel(self.model)
+        self.tree.setRootIndex(self.model.index(dir_path))
+        self.tree.setColumnWidth(0, 250)
+        self.tree.setAlternatingRowColors(True)
+
+        layout = QVBoxLayout()
+        layout.addWidget(self.tree)
+        self.setLayout(layout)
 
 
 class LoginWindow(QMainWindow, UiLogin):
@@ -62,13 +82,14 @@ class LoginWindow(QMainWindow, UiLogin):
             # Receive the server's response
             response = client_socket.recv(1024).decode().strip()
 
-        # Check the server's response and show an appropriate message
+            # Check the server's response and show an appropriate message
             if response == "OK":
                 # Welcome message
                 print(f"Login Successful - Welcome, {username}!")
                 client_socket.send("download_folder".encode())
                 folder: Directory = loads(client_socket.recv(1024))
                 folder.create(FOLDER)
+                self.goto_files(folder.path)
                 # Show the download and upload buttons
             else:
                 print("Login Failed - Invalid username or password")
@@ -77,6 +98,11 @@ class LoginWindow(QMainWindow, UiLogin):
     @staticmethod
     def goto_signup_screen():
         widget.addWidget(SignupWindow())
+        widget.setCurrentIndex(widget.currentIndex() + 1)
+
+    @staticmethod
+    def goto_files(path):
+        widget.addWidget((FileSystemView(path)))
         widget.setCurrentIndex(widget.currentIndex() + 1)
 
 
@@ -117,7 +143,9 @@ class SignupWindow(QMainWindow, UiSignup):
         # Check the server's response and show an appropriate message
         if response == "OK":
             print(f"Signup Successful - Welcome {username}!")
-            os.makedirs(os.path.join(FOLDER, username))
+            path = os.path.join(FOLDER, username)
+            os.makedirs(path)
+            self.goto_files(path)
 
         else:
             print("Signup Failed - Username already exists")
@@ -127,6 +155,11 @@ class SignupWindow(QMainWindow, UiSignup):
     @staticmethod
     def go_back():
         widget.setCurrentIndex(widget.currentIndex() - 1)
+
+    @staticmethod
+    def goto_files(path):
+        widget.addWidget((FileSystemView(path)))
+        widget.setCurrentIndex(widget.currentIndex() + 1)
 
 
 if __name__ == "__main__":
