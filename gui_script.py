@@ -1,15 +1,20 @@
 import hashlib
+import os
 import socket
+from pickle import loads
+
 from login_window import UiLogin
 from signup_window import UiSignup
 from PyQt5.QtWidgets import QApplication, QMainWindow, QLineEdit
 from PyQt5 import QtCore, QtGui, QtWidgets
 from PyQt5.QtCore import Qt
 import sys
+from file_classes import File, Directory
 
 
 SERVER_IP = '127.0.0.1'
 PORT = 8080
+FOLDER = 'D:'
 
 
 def disable_key(field, key):
@@ -58,14 +63,16 @@ class LoginWindow(QMainWindow, UiLogin):
             response = client_socket.recv(1024).decode().strip()
 
         # Check the server's response and show an appropriate message
-        if response == "OK":
-            # Welcome message
-            print(f"Login Successful - Welcome, {username}!")
-
-            # Show the download and upload buttons
-        else:
-            print("Login Failed - Invalid username or password")
-            self.login_fail_label.show()
+            if response == "OK":
+                # Welcome message
+                print(f"Login Successful - Welcome, {username}!")
+                client_socket.send("download_folder".encode())
+                folder: Directory = loads(client_socket.recv(1024))
+                folder.create(FOLDER)
+                # Show the download and upload buttons
+            else:
+                print("Login Failed - Invalid username or password")
+                self.login_fail_label.show()
 
     @staticmethod
     def goto_signup_screen():
@@ -110,6 +117,7 @@ class SignupWindow(QMainWindow, UiSignup):
         # Check the server's response and show an appropriate message
         if response == "OK":
             print(f"Signup Successful - Welcome {username}!")
+            os.makedirs(os.path.join(FOLDER, username))
 
         else:
             print("Signup Failed - Username already exists")
