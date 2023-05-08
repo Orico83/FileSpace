@@ -1,24 +1,52 @@
 import hashlib
 import os
+import shutil
 import socket
 from pickle import loads
 
 from login_window import UiLogin
 from signup_window import UiSignup
-from PyQt5.QtWidgets import QApplication, QMainWindow, QLineEdit, QWidget, QFileSystemModel, QTreeView, QVBoxLayout
+from PyQt5.QtWidgets import QApplication, QMainWindow, QLineEdit, QWidget, QFileSystemModel, QTreeView, QVBoxLayout, \
+    QInputDialog, QMessageBox
 from PyQt5 import QtCore, QtGui, QtWidgets
 from PyQt5.QtCore import Qt
 import sys
 from file_classes import File, Directory
+from main_window import Ui_MainWindow
 
 SERVER_IP = '127.0.0.1'
 PORT = 8080
-FOLDER = 'D:'
+FOLDER = r'C:\Users\orico\OneDrive\שולחן העבודה\FS'
 
 
 def disable_key(field, key):
     field.keyPressEvent = lambda event: event.ignore() if event.key() == key else QLineEdit.keyPressEvent(
         field, event)
+
+
+# Example function to open a file
+def open_file(file_path):
+    # Open the file using the default system application
+    os.startfile(file_path)
+
+
+# Example function to delete a file or folder
+def delete_item(item_path):
+    if os.path.isfile(item_path):
+        # Delete a file
+        os.remove(item_path)
+    elif os.path.isdir(item_path):
+        # Delete a folder and its contents
+        shutil.rmtree(item_path)
+
+
+# Example function to rename a file or folder
+def rename_item(item_path, new_name):
+    try:
+        new_path = os.path.join(os.path.dirname(item_path), new_name)
+        os.rename(item_path, new_path)
+    except Exception as err:
+        QMessageBox.warning(widget, "Error", err.args[1])
 
 
 def create_fail_label(parent, text, geometry):
@@ -33,25 +61,129 @@ def create_fail_label(parent, text, geometry):
     return fail_label
 
 
-class FileSystemView(QWidget):
+class MainWindow(QWidget, Ui_MainWindow):
     def __init__(self, dir_path):
         super().__init__()
-        appWidth = 800
-        appHeight = 300
-        self.setWindowTitle('File System Viewer')
-        self.setGeometry(300, 300, appWidth, appHeight)
-
+        self.dir_path = dir_path
+        self.setupUi(self)
         self.model = QFileSystemModel()
         self.model.setRootPath(dir_path)
-        self.tree = QTreeView()
-        self.tree.setModel(self.model)
-        self.tree.setRootIndex(self.model.index(dir_path))
-        self.tree.setColumnWidth(0, 250)
-        self.tree.setAlternatingRowColors(True)
+        self.tree_view.setModel(self.model)
+        self.tree_view.setRootIndex(self.model.index(dir_path))
+        self.tree_view.setAlternatingRowColors(True)
+        self.upload_files_button.clicked.connect(self.upload_files)  # Connect the upload button to the method
+        self.upload_folders_button.clicked.connect(self.upload_folders)
 
-        layout = QVBoxLayout()
-        layout.addWidget(self.tree)
-        self.setLayout(layout)
+        # Connect the buttons for file and folder actions
+        self.open_button.clicked.connect(self.open_selected_item)
+        self.delete_button.clicked.connect(self.delete_selected_item)
+        self.rename_button.clicked.connect(self.rename_selected_item)
+
+        self.create_folder_button.clicked.connect(self.create_new_directory)
+        self.create_file_button.clicked.connect(self.create_new_file)
+
+    def open_selected_item(self):
+        # Get the selected item's path
+        selected_index = self.tree_view.currentIndex()
+        item_path = self.model.filePath(selected_index)
+
+        # Open the item (assuming it's a file)
+        if os.path.isfile(item_path):
+            open_file(item_path)
+
+    def delete_selected_item(self):
+        # Get the selected item's path
+        selected_index = self.tree_view.currentIndex()
+        item_path = self.model.filePath(selected_index)
+
+        # Delete the item (file or folder)
+        delete_item(item_path)
+
+        # Refresh the file system view
+        self.model.setRootPath(self.model.rootPath())
+
+    def rename_selected_item(self):
+        # Get the selected item's path
+        selected_index = self.tree_view.currentIndex()
+        item_path = self.model.filePath(selected_index)
+
+        # Open a dialog to get the new name
+        new_name, ok = QInputDialog.getText(self, "Rename Item", "New Name:")
+        if ok and new_name:
+            # Rename the item
+            rename_item(item_path, new_name)
+
+            # Refresh the file system view
+            self.model.setRootPath(self.model.rootPath())
+
+    def create_new_file(self):
+        # Open a dialog to get the new file name
+        file_name, ok = QInputDialog.getText(self, "Create New File", "File Name:")
+        if ok and file_name:
+            # Construct the path of the new file
+            new_file_path = os.path.join(self.dir_path, file_name)
+
+            # Check if a file or directory with the same name already exists
+            if os.path.exists(new_file_path):
+                QMessageBox.warning(self, "Error", "A file or directory with the same name already exists.")
+                return
+
+            # Create the new file
+            with open(new_file_path, 'w') as file:
+                pass  # Do nothing, just create an empty file
+
+            # Refresh the file system view
+            self.model.setRootPath(self.model.rootPath())
+
+    def create_new_directory(self):
+        # Open a dialog to get the new directory name
+        dir_name, ok = QInputDialog.getText(self, "Create New Directory", "Directory Name:")
+        if ok and dir_name:
+
+            # Construct the path of the new directory
+            new_dir_path = os.path.join(self.dir_path, dir_name)
+
+            # Check if a file or directory with the same name already exists
+            if os.path.exists(new_dir_path):
+                QMessageBox.warning(self, "Error", "A file or directory with the same name already exists.")
+                return
+
+            # Create the new directory
+            os.makedirs(new_dir_path)
+
+            # Refresh the file system view
+            self.model.setRootPath(self.model.rootPath())
+
+    def upload_folders(self):
+        directory = QtWidgets.QFileDialog.getExistingDirectory(self, "Select Folder to Upload", QtCore.QDir.homePath())
+        if directory:
+            directory = Directory(directory)
+            directory.create(self.dir_path)
+            # Refresh the file system view
+            self.model.setRootPath(self.model.rootPath())
+
+    def upload_files(self):
+        file_dialog = QtWidgets.QFileDialog()
+        file_dialog.setFileMode(QtWidgets.QFileDialog.ExistingFiles | QtWidgets.QFileDialog.Directory)
+        file_dialog.setOption(QtWidgets.QFileDialog.ShowDirsOnly, False)  # Show both files and directories
+        if file_dialog.exec_():
+            selected_files = file_dialog.selectedFiles()
+            for file_path in selected_files:
+                if os.path.isfile(file_path):
+                    # Upload a single file
+                    file = File(file_path)
+                    destination_path = os.path.join(self.dir_path,
+                                                    file.name)
+                    shutil.copyfile(file.path, destination_path)
+                elif os.path.isdir(file_path):
+                    # Upload a directory
+                    directory = Directory(file_path)
+                    destination_path = os.path.join(FOLDER, self.model.filePath(self.tree_view.currentIndex()),
+                                                    directory.name)
+                    directory.create(destination_path)
+
+            # Refresh the file system view
+            self.model.setRootPath(self.model.rootPath())
 
 
 class LoginWindow(QMainWindow, UiLogin):
@@ -88,8 +220,8 @@ class LoginWindow(QMainWindow, UiLogin):
                 print(f"Login Successful - Welcome, {username}!")
                 client_socket.send("download_folder".encode())
                 folder: Directory = loads(client_socket.recv(1024))
-                folder.create(FOLDER)
-                self.goto_files(folder.path)
+                f = folder.create(FOLDER)
+                self.goto_files(f.path)
             else:
                 print("Login Failed - Invalid username or password")
                 self.login_fail_label.show()
@@ -101,8 +233,10 @@ class LoginWindow(QMainWindow, UiLogin):
 
     @staticmethod
     def goto_files(path):
-        widget.addWidget((FileSystemView(path)))
+        widget.addWidget((MainWindow(path)))
         widget.setCurrentIndex(widget.currentIndex() + 1)
+        widget.setFixedWidth(840)
+        widget.setFixedHeight(587)
 
 
 class SignupWindow(QMainWindow, UiSignup):
@@ -157,8 +291,10 @@ class SignupWindow(QMainWindow, UiSignup):
 
     @staticmethod
     def goto_files(path):
-        widget.addWidget((FileSystemView(path)))
+        widget.addWidget((MainWindow(path)))
         widget.setCurrentIndex(widget.currentIndex() + 1)
+        widget.setFixedWidth(761)
+        widget.setFixedHeight(435)
 
 
 if __name__ == "__main__":

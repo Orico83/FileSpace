@@ -17,7 +17,7 @@ database_config = {
     "database": "test"
 }
 
-FOLDER = 'D:\\FS\\'
+FOLDER = r'C:\Users\orico\OneDrive\שולחן העבודה\ServerFolder'  # 'D:\\FS\\'
 
 
 def handle_upload(client_socket):

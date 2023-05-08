@@ -79,6 +79,7 @@ class Directory:
 
         for subdirectory in self.subdirectories:
             subdirectory.create(directory_path)
+        return Directory(directory_path)
 
     def change_file_path(self, file_path, new_path):
         """
@@ -128,16 +129,43 @@ class Directory:
         self.path = new_path
         self.name = os.path.basename(new_path)
 
+    def search_files(self, keyword):
+        """
+        Search for files containing the specified keyword in their names within the directory and its subdirectories.
 
-# Create a Directory object
-new_directory = Directory(r'C:\Users\orico\OneDrive\שולחן העבודה\FS')
+        Args:
+            keyword (str): The keyword to search for in file names.
 
-# Call the create() method to create the directory with its files and subdirectories
-new_directory.create(r'C:\Users\orico\PycharmProjects\OOP')
+        Returns:
+            list: A list of matching File objects.
+        """
+        matching_files = []
+        for file in self.files:
+            if keyword.upper() in file.name.upper():
+                matching_files.append(file)
 
-# new_directory.change_file_path(r"C:\Users\orico\OneDrive\שולחן העבודה\FS\try4\test_thread.py",
-#    r"C:\Users\orico\OneDrive\שולחן העבודה\FS\test_thread1.py")
-# TO DO use change_file_path for rename/move file. If the file was moved outside the shared folder, use delete.
+        for subdirectory in self.subdirectories:
+            matching_files.extend(subdirectory.search_files(keyword))
 
-new_directory.change_folder_path(r"C:\Users\orico\OneDrive\שולחן העבודה\FS\try4", r"C:\Users\orico\OneDrive\שולחן "
-                                                                                  r"העבודה\FS\test\try")
+        return matching_files
+
+
+def main():
+    # Create a Directory object
+    new_directory = Directory(r'C:\Users\orico\OneDrive\שולחן העבודה\FS')
+
+    # Call the create() method to create the directory with its files and subdirectories
+    f = new_directory.create(r'C:\Users\orico\PycharmProjects\OOP')
+
+
+    # new_directory.change_file_path(r"C:\Users\orico\OneDrive\שולחן העבודה\FS\try4\test_thread.py",
+    #    r"C:\Users\orico\OneDrive\שולחן העבודה\FS\test_thread1.py")
+    # TO DO use change_file_path for rename/move file. If the file was moved outside the shared folder, use delete.
+
+    for file in new_directory.search_files("test"):
+        print(file.path)
+    os.remove('')
+
+
+if __name__ == '__main__':
+    main()

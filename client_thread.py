@@ -6,7 +6,7 @@ from pickle import dumps
 import mysql
 from file_classes import File, Directory
 
-FOLDER = r'C:\Users\cyber\Desktop\FS'    #"C:\\Users\\orico\\OneDrive\\שולחן העבודה\\FileSpace\\"
+FOLDER = r"C:\Users\orico\OneDrive\שולחן העבודה\ServerFolder"  # 'C:\Users\cyber\Desktop\FS'
 database_config = {
     "host": "localhost",
     "user": "root",
@@ -39,7 +39,6 @@ class ClientThread(threading.Thread):
             self.username = data.split()[1]
             print(self.username)
             password = data.split()[2]
-
             print(password)
             mysql_cursor.execute("SELECT * FROM users WHERE username = %s AND password = %s", (self.username, password))
             result = mysql_cursor.fetchone()
@@ -54,9 +53,7 @@ class ClientThread(threading.Thread):
             # Receive the username and password from the client
             self.username = data.split()[1]
             print(self.username)
-            password = data.split()[2
-            ]
-
+            password = data.split()[2]
             print(password)
             # Check if the username already exists in the table
             mysql_cursor.execute("SELECT * FROM users WHERE username = %s", (self.username,))
@@ -64,14 +61,15 @@ class ClientThread(threading.Thread):
             if result:
                 self.client_socket.send("FAIL".encode())
             else:
-                mysql_cursor.execute("INSERT INTO users (username, password) VALUES (%s, %s)", (self.username, password))
+                mysql_cursor.execute("INSERT INTO users (username, password) VALUES (%s, %s)",
+                                     (self.username, password))
                 mysql_connection.commit()
                 self.folder_path = os.path.join(FOLDER, self.username)
                 os.makedirs(self.folder_path)
                 self.client_socket.send("OK".encode())
                 self.handle_commands()  # Call a method to handle subsequent commands
 
-    # Close the MySQL connection and client socket
+        # Close the MySQL connection and client socket
         mysql_cursor.close()
         mysql_connection.close()
         self.client_socket.close()
@@ -94,6 +92,3 @@ class ClientThread(threading.Thread):
                 self.client_socket.send("Response to command2".encode())
             else:
                 self.client_socket.send("Invalid command".encode())
-
-
-
