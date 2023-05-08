@@ -293,8 +293,8 @@ class SignupWindow(QMainWindow, UiSignup):
     def goto_files(path):
         widget.addWidget((MainWindow(path)))
         widget.setCurrentIndex(widget.currentIndex() + 1)
-        widget.setFixedWidth(761)
-        widget.setFixedHeight(435)
+        widget.setFixedWidth(840)
+        widget.setFixedHeight(587)
 
 
 if __name__ == "__main__":
