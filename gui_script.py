@@ -90,7 +90,6 @@ class LoginWindow(QMainWindow, UiLogin):
                 folder: Directory = loads(client_socket.recv(1024))
                 folder.create(FOLDER)
                 self.goto_files(folder.path)
-                # Show the download and upload buttons
             else:
                 print("Login Failed - Invalid username or password")
                 self.login_fail_label.show()
