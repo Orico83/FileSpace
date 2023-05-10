@@ -1,25 +1,25 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <ui version="4.0">
- <class>Form</class>
- <widget class="QWidget" name="Form">
+ <class>MainWindow</class>
+ <widget class="QWidget" name="MainWindow">
   <property name="geometry">
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>734</width>
-    <height>435</height>
+    <width>840</width>
+    <height>587</height>
    </rect>
   </property>
   <property name="windowTitle">
-   <string>Form</string>
+   <string>MainWindow</string>
   </property>
-  <widget class="QTabWidget" name="tabWidget">
+  <widget class="QTabWidget" name="myfolder_tab_2">
    <property name="geometry">
     <rect>
      <x>0</x>
      <y>0</y>
-     <width>734</width>
-     <height>435</height>
+     <width>831</width>
+     <height>581</height>
     </rect>
    </property>
    <property name="currentIndex">
@@ -29,43 +29,144 @@
     <attribute name="title">
      <string>My Folder</string>
     </attribute>
-    <widget class="QTreeView" name="treeView">
+    <widget class="QPushButton" name="upload_files_button">
      <property name="geometry">
       <rect>
-       <x>5</x>
-       <y>1</y>
+       <x>700</x>
+       <y>20</y>
+       <width>81</width>
+       <height>23</height>
+      </rect>
+     </property>
+     <property name="text">
+      <string>Upload Files</string>
+     </property>
+    </widget>
+    <widget class="QPushButton" name="share_button">
+     <property name="geometry">
+      <rect>
+       <x>700</x>
+       <y>180</y>
+       <width>81</width>
+       <height>23</height>
+      </rect>
+     </property>
+     <property name="text">
+      <string>Share</string>
+     </property>
+    </widget>
+    <widget class="QPushButton" name="upload_folders_button">
+     <property name="geometry">
+      <rect>
+       <x>700</x>
+       <y>60</y>
+       <width>81</width>
+       <height>23</height>
+      </rect>
+     </property>
+     <property name="text">
+      <string>Upload Folders</string>
+     </property>
+    </widget>
+    <widget class="QGroupBox" name="actions_on_item">
+     <property name="geometry">
+      <rect>
+       <x>679</x>
+       <y>240</y>
+       <width>121</width>
+       <height>171</height>
+      </rect>
+     </property>
+     <property name="font">
+      <font>
+       <weight>50</weight>
+       <bold>false</bold>
+       <underline>false</underline>
+      </font>
+     </property>
+     <property name="title">
+      <string>Actions On Item</string>
+     </property>
+     <property name="flat">
+      <bool>false</bool>
+     </property>
+     <widget class="QPushButton" name="open_button">
+      <property name="geometry">
+       <rect>
+        <x>20</x>
+        <y>30</y>
+        <width>81</width>
+        <height>23</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>Open</string>
+      </property>
+     </widget>
+     <widget class="QPushButton" name="delete_button">
+      <property name="geometry">
+       <rect>
+        <x>20</x>
+        <y>70</y>
+        <width>81</width>
+        <height>23</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>Delete</string>
+      </property>
+     </widget>
+     <widget class="QPushButton" name="rename_button">
+      <property name="geometry">
+       <rect>
+        <x>20</x>
+        <y>110</y>
+        <width>81</width>
+        <height>23</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>Rename</string>
+      </property>
+     </widget>
+    </widget>
+    <widget class="QTreeView" name="tree_view">
+     <property name="geometry">
+      <rect>
+       <x>10</x>
+       <y>10</y>
        <width>641</width>
-       <height>401</height>
+       <height>541</height>
       </rect>
      </property>
      <property name="animated">
       <bool>false</bool>
      </property>
     </widget>
-    <widget class="QPushButton" name="pushButton">
+    <widget class="QPushButton" name="create_folder_button">
      <property name="geometry">
       <rect>
-       <x>650</x>
-       <y>10</y>
-       <width>75</width>
+       <x>700</x>
+       <y>140</y>
+       <width>81</width>
        <height>23</height>
       </rect>
      </property>
      <property name="text">
-      <string>Upload</string>
+      <string>Create Folder</string>
      </property>
     </widget>
-    <widget class="QPushButton" name="pushButton_2">
+    <widget class="QPushButton" name="create_file_button">
      <property name="geometry">
       <rect>
-       <x>650</x>
-       <y>50</y>
-       <width>75</width>
+       <x>700</x>
+       <y>100</y>
+       <width>81</width>
        <height>23</height>
       </rect>
      </property>
      <property name="text">
-      <string>Share</string>
+      <string>Create File</string>
      </property>
     </widget>
    </widget>
