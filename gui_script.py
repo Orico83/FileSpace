@@ -16,7 +16,7 @@ from main_window import Ui_MainWindow
 
 SERVER_IP = '127.0.0.1'
 PORT = 8080
-FOLDER = r'C:\Users\orico\OneDrive\שולחן העבודה\FS'
+FOLDER = r'C:\Users\orico\OneDrive\שולחן העבודה\FS'  # r'C:\Users\cyber\Desktop\FS'
 
 
 def disable_key(field, key):
@@ -95,12 +95,13 @@ class MainWindow(QWidget, Ui_MainWindow):
         # Get the selected item's path
         selected_index = self.tree_view.currentIndex()
         item_path = self.model.filePath(selected_index)
-
         # Delete the item (file or folder)
         delete_item(item_path)
-
         # Refresh the file system view
         self.model.setRootPath(self.model.rootPath())
+        item_path = os.path.relpath(item_path, FOLDER)
+
+        client_socket.send(f"delete_item {item_path}".encode())
 
     def rename_selected_item(self):
         # Get the selected item's path
@@ -177,7 +178,7 @@ class MainWindow(QWidget, Ui_MainWindow):
             self.model.setRootPath(self.model.rootPath())
 
     def upload_files(self):
-        file_dialog = QtWidgets.QFileDialog()
+        file_dialog = QtWidgets.QFileDialog(self, "Select File to Upload")
         file_dialog.setFileMode(QtWidgets.QFileDialog.ExistingFiles | QtWidgets.QFileDialog.Directory)
         file_dialog.setOption(QtWidgets.QFileDialog.ShowDirsOnly, False)  # Show both files and directories
         parent_index = self.tree_view.currentIndex()
@@ -225,25 +226,22 @@ class LoginWindow(QMainWindow, UiLogin):
         # perform login logic here
         print(f"Username: {username}")
         print(f"Password: {password}")
-        # Create a new socket and connect to the server
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client_socket:
-            client_socket.connect((SERVER_IP, PORT))
-            # Send the username and password to the server for signup
-            client_socket.send(f"login {username} {hashlib.md5(password.encode()).hexdigest()}".encode())
-            # Receive the server's response
-            response = client_socket.recv(1024).decode().strip()
+        # Send the username and password to the server for signup
+        client_socket.send(f"login {username} {hashlib.md5(password.encode()).hexdigest()}".encode())
+        # Receive the server's response
+        response = client_socket.recv(1024).decode().strip()
 
-            # Check the server's response and show an appropriate message
-            if response == "OK":
-                # Welcome message
-                print(f"Login Successful - Welcome, {username}!")
-                client_socket.send("download_folder".encode())
-                folder: Directory = loads(client_socket.recv(1024))
-                f = folder.create(FOLDER)
-                self.goto_files(f.path)
-            else:
-                print("Login Failed - Invalid username or password")
-                self.login_fail_label.show()
+        # Check the server's response and show an appropriate message
+        if response == "OK":
+            # Welcome message
+            print(f"Login Successful - Welcome, {username}!")
+            client_socket.send("download_folder".encode())
+            folder: Directory = loads(client_socket.recv(1024))
+            f = folder.create(FOLDER)
+            self.goto_files(f.path)
+        else:
+            print("Login Failed - Invalid username or password")
+            self.login_fail_label.show()
 
     @staticmethod
     def goto_signup_screen():
@@ -285,12 +283,9 @@ class SignupWindow(QMainWindow, UiSignup):
         print("Username:", username)
         print("Password:", password)
         # Create a new socket and connect to the server
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client_socket:
-            client_socket.connect((SERVER_IP, PORT))
-            # Send the username and password to the server for signup
-            client_socket.send(f"signup {username} {hashlib.md5(password.encode()).hexdigest()}".encode())
-            # Receive the server's response
-            response = client_socket.recv(1024).decode().strip()
+        client_socket.send(f"signup {username} {hashlib.md5(password.encode()).hexdigest()}".encode())
+        # Receive the server's response
+        response = client_socket.recv(1024).decode().strip()
 
         # Check the server's response and show an appropriate message
         if response == "OK":
@@ -317,10 +312,13 @@ class SignupWindow(QMainWindow, UiSignup):
 
 
 if __name__ == "__main__":
-    app = QApplication(sys.argv)
-    widget = QtWidgets.QStackedWidget()
-    widget.addWidget(LoginWindow())
-    widget.setFixedHeight(600)
-    widget.setFixedWidth(460)
-    widget.show()
-    sys.exit(app.exec_())
+    # Create a new socket and connect to the server
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client_socket:
+        client_socket.connect((SERVER_IP, PORT))
+        app = QApplication(sys.argv)
+        widget = QtWidgets.QStackedWidget()
+        widget.addWidget(LoginWindow())
+        widget.setFixedHeight(600)
+        widget.setFixedWidth(460)
+        widget.show()
+        sys.exit(app.exec_())

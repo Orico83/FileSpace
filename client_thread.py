@@ -1,12 +1,13 @@
 import hashlib
 import os
+import shutil
 import threading
 from pickle import dumps
 
 import mysql
 from file_classes import File, Directory
 
-FOLDER = r"C:\Users\orico\OneDrive\שולחן העבודה\ServerFolder"  # 'C:\Users\cyber\Desktop\FS'
+FOLDER = r'C:\Users\orico\OneDrive\שולחן העבודה\ServerFolder'   # r"C:\Users\cyber\Desktop\ServerFolder"
 database_config = {
     "host": "localhost",
     "user": "root",
@@ -37,9 +38,8 @@ class ClientThread(threading.Thread):
         if command == "login":
             # Receive the username and password from the client
             self.username = data.split()[1]
-            print(self.username)
             password = data.split()[2]
-            print(password)
+            print(f"Username: {self.username} | Password: {password}")
             mysql_cursor.execute("SELECT * FROM users WHERE username = %s AND password = %s", (self.username, password))
             result = mysql_cursor.fetchone()
             if result:
@@ -52,9 +52,8 @@ class ClientThread(threading.Thread):
         elif command == "signup":
             # Receive the username and password from the client
             self.username = data.split()[1]
-            print(self.username)
             password = data.split()[2]
-            print(password)
+            print(f"Username: {self.username} | Password: {password}")
             # Check if the username already exists in the table
             mysql_cursor.execute("SELECT * FROM users WHERE username = %s", (self.username,))
             result = mysql_cursor.fetchone()
@@ -68,6 +67,10 @@ class ClientThread(threading.Thread):
                 os.makedirs(self.folder_path)
                 self.client_socket.send("OK".encode())
                 self.handle_commands()  # Call a method to handle subsequent commands
+        elif command == "delete_item":
+            item_path = os.path.join(FOLDER, str(data.split()[1]))
+            delete_item(item_path)
+
 
         # Close the MySQL connection and client socket
         mysql_cursor.close()
@@ -84,11 +87,24 @@ class ClientThread(threading.Thread):
 
             # Add code to handle different commands here
             if data.startswith("download_folder"):
-                folder = Directory(self.folder_path)
+                try:
+                    folder = Directory(self.folder_path)
+                except FileNotFoundError:
+                    os.makedirs(self.folder_path)
+                    folder = Directory(self.folder_path)
                 # Handle command1
                 self.client_socket.send(dumps(folder))
-            elif data.startswith("command2"):
-                # Handle command2
-                self.client_socket.send("Response to command2".encode())
+            elif data.startswith("delete_item"):
+                item_path = os.path.join(FOLDER, str(data.split()[1]))
+                delete_item(item_path)
             else:
                 self.client_socket.send("Invalid command".encode())
+
+
+def delete_item(item_path):
+    if os.path.isfile(item_path):
+        # Delete a file
+        os.remove(item_path)
+    elif os.path.isdir(item_path):
+        # Delete a folder and its contents
+        shutil.rmtree(item_path)
