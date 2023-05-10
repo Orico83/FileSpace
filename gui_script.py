@@ -119,9 +119,14 @@ class MainWindow(QWidget, Ui_MainWindow):
     def create_new_file(self):
         # Open a dialog to get the new file name
         file_name, ok = QInputDialog.getText(self, "Create New File", "File Name:")
+        parent_index = self.tree_view.currentIndex()
+        parent_path = self.model.filePath(parent_index)
         if ok and file_name:
+            # Check if a directory is selected
+            if not os.path.isdir(parent_path):
+                parent_path = self.dir_path
             # Construct the path of the new file
-            new_file_path = os.path.join(self.dir_path, file_name)
+            new_file_path = os.path.join(parent_path, file_name)
 
             # Check if a file or directory with the same name already exists
             if os.path.exists(new_file_path):
@@ -138,10 +143,14 @@ class MainWindow(QWidget, Ui_MainWindow):
     def create_new_directory(self):
         # Open a dialog to get the new directory name
         dir_name, ok = QInputDialog.getText(self, "Create New Directory", "Directory Name:")
+        parent_index = self.tree_view.currentIndex()
+        parent_path = self.model.filePath(parent_index)
         if ok and dir_name:
-
+            # Check if a directory is selected
+            if not os.path.isdir(parent_path):
+                parent_path = self.dir_path
             # Construct the path of the new directory
-            new_dir_path = os.path.join(self.dir_path, dir_name)
+            new_dir_path = os.path.join(parent_path, dir_name)
 
             # Check if a file or directory with the same name already exists
             if os.path.exists(new_dir_path):

@@ -164,7 +164,6 @@ def main():
 
     for file in new_directory.search_files("test"):
         print(file.path)
-    os.remove('')
 
 
 if __name__ == '__main__':
