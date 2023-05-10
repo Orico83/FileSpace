@@ -7,7 +7,7 @@ from pickle import dumps
 import mysql
 from file_classes import File, Directory
 
-FOLDER = r'C:\Users\orico\OneDrive\שולחן העבודה\ServerFolder'   # r"C:\Users\cyber\Desktop\ServerFolder"
+FOLDER = r'C:\Users\orico\OneDrive\שולחן העבודה\ServerFolder'  # r"C:\Users\cyber\Desktop\ServerFolder"
 database_config = {
     "host": "localhost",
     "user": "root",
@@ -67,10 +67,6 @@ class ClientThread(threading.Thread):
                 os.makedirs(self.folder_path)
                 self.client_socket.send("OK".encode())
                 self.handle_commands()  # Call a method to handle subsequent commands
-        elif command == "delete_item":
-            item_path = os.path.join(FOLDER, str(data.split()[1]))
-            delete_item(item_path)
-
 
         # Close the MySQL connection and client socket
         mysql_cursor.close()
