@@ -1,12 +1,13 @@
 import hashlib
 import os
+import shutil
 import threading
 from pickle import dumps
 
 import mysql
 from file_classes import File, Directory
 
-FOLDER = r"C:\Users\orico\OneDrive\שולחן העבודה\ServerFolder"  # 'C:\Users\cyber\Desktop\FS'
+FOLDER = r"C:\Users\cyber\Desktop\ServerFolder"  # 'C:\Users\cyber\Desktop\FS'
 database_config = {
     "host": "localhost",
     "user": "root",
@@ -68,6 +69,9 @@ class ClientThread(threading.Thread):
                 os.makedirs(self.folder_path)
                 self.client_socket.send("OK".encode())
                 self.handle_commands()  # Call a method to handle subsequent commands
+        elif command == "delete_item":
+            item_path = os.path.join(FOLDER, self.username, str(data.split[1]))
+            delete_item(item_path)
 
         # Close the MySQL connection and client socket
         mysql_cursor.close()
@@ -84,11 +88,24 @@ class ClientThread(threading.Thread):
 
             # Add code to handle different commands here
             if data.startswith("download_folder"):
-                folder = Directory(self.folder_path)
+                try:
+                    folder = Directory(self.folder_path)
+                except FileNotFoundError:
+                    os.makedirs(self.folder_path)
+                    folder = Directory(self.folder_path)
                 # Handle command1
                 self.client_socket.send(dumps(folder))
-            elif data.startswith("command2"):
-                # Handle command2
-                self.client_socket.send("Response to command2".encode())
+            elif data.startswith("delete_file"):
+                delete_item(data.split[1])
+
             else:
                 self.client_socket.send("Invalid command".encode())
+
+
+def delete_item(item_path):
+    if os.path.isfile(item_path):
+        # Delete a file
+        os.remove(item_path)
+    elif os.path.isdir(item_path):
+        # Delete a folder and its contents
+        shutil.rmtree(item_path)

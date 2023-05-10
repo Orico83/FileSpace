@@ -16,7 +16,7 @@ from main_window import Ui_MainWindow
 
 SERVER_IP = '127.0.0.1'
 PORT = 8080
-FOLDER = r'C:\Users\orico\OneDrive\שולחן העבודה\FS'
+FOLDER = r'C:\Users\cyber\Desktop\FS'
 
 
 def disable_key(field, key):
@@ -95,12 +95,14 @@ class MainWindow(QWidget, Ui_MainWindow):
         # Get the selected item's path
         selected_index = self.tree_view.currentIndex()
         item_path = self.model.filePath(selected_index)
-
         # Delete the item (file or folder)
         delete_item(item_path)
-
         # Refresh the file system view
         self.model.setRootPath(self.model.rootPath())
+
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client_socket:
+            client_socket.connect((SERVER_IP, PORT))
+            client_socket.send(f"delete_item {os.path.basename(item_path)}".encode())
 
     def rename_selected_item(self):
         # Get the selected item's path
@@ -177,7 +179,7 @@ class MainWindow(QWidget, Ui_MainWindow):
             self.model.setRootPath(self.model.rootPath())
 
     def upload_files(self):
-        file_dialog = QtWidgets.QFileDialog()
+        file_dialog = QtWidgets.QFileDialog(self, "Select File to Upload")
         file_dialog.setFileMode(QtWidgets.QFileDialog.ExistingFiles | QtWidgets.QFileDialog.Directory)
         file_dialog.setOption(QtWidgets.QFileDialog.ShowDirsOnly, False)  # Show both files and directories
         parent_index = self.tree_view.currentIndex()
@@ -225,8 +227,9 @@ class LoginWindow(QMainWindow, UiLogin):
         # perform login logic here
         print(f"Username: {username}")
         print(f"Password: {password}")
-        # Create a new socket and connect to the server
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client_socket:
+        try:
+            # Create a new socket and connect to the server
+            client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             client_socket.connect((SERVER_IP, PORT))
             # Send the username and password to the server for signup
             client_socket.send(f"login {username} {hashlib.md5(password.encode()).hexdigest()}".encode())
@@ -244,6 +247,8 @@ class LoginWindow(QMainWindow, UiLogin):
             else:
                 print("Login Failed - Invalid username or password")
                 self.login_fail_label.show()
+        except Exception as err:
+            print(err)
 
     @staticmethod
     def goto_signup_screen():
