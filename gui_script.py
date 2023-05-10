@@ -165,9 +165,14 @@ class MainWindow(QWidget, Ui_MainWindow):
 
     def upload_folders(self):
         directory = QtWidgets.QFileDialog.getExistingDirectory(self, "Select Folder to Upload", QtCore.QDir.homePath())
+        parent_index = self.tree_view.currentIndex()
+        parent_path = self.model.filePath(parent_index)
         if directory:
+            # Check if a directory is selected
+            if not os.path.isdir(parent_path):
+                parent_path = self.dir_path
             directory = Directory(directory)
-            directory.create(self.dir_path)
+            directory.create(parent_path)
             # Refresh the file system view
             self.model.setRootPath(self.model.rootPath())
 
@@ -175,13 +180,18 @@ class MainWindow(QWidget, Ui_MainWindow):
         file_dialog = QtWidgets.QFileDialog()
         file_dialog.setFileMode(QtWidgets.QFileDialog.ExistingFiles | QtWidgets.QFileDialog.Directory)
         file_dialog.setOption(QtWidgets.QFileDialog.ShowDirsOnly, False)  # Show both files and directories
+        parent_index = self.tree_view.currentIndex()
+        parent_path = self.model.filePath(parent_index)
         if file_dialog.exec_():
+            # Check if a directory is selected
+            if not os.path.isdir(parent_path):
+                parent_path = self.dir_path
             selected_files = file_dialog.selectedFiles()
             for file_path in selected_files:
                 if os.path.isfile(file_path):
                     # Upload a single file
                     file = File(file_path)
-                    destination_path = os.path.join(self.dir_path,
+                    destination_path = os.path.join(parent_path,
                                                     file.name)
                     shutil.copyfile(file.path, destination_path)
                 elif os.path.isdir(file_path):
