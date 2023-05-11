@@ -6,8 +6,7 @@ from pickle import loads, dumps
 
 from login_window import UiLogin
 from signup_window import UiSignup
-from PyQt5.QtWidgets import QApplication, QMainWindow, QLineEdit, QWidget, QFileSystemModel, QTreeView, QVBoxLayout, \
-    QInputDialog, QMessageBox
+from PyQt5.QtWidgets import QApplication, QMainWindow, QLineEdit, QWidget, QFileSystemModel, QInputDialog, QMessageBox
 from PyQt5 import QtCore, QtGui, QtWidgets
 from PyQt5.QtCore import Qt
 import sys
@@ -16,18 +15,12 @@ from main_window import Ui_MainWindow
 
 SERVER_IP = '127.0.0.1'
 PORT = 8080
-FOLDER = r'C:\Users\cyber\Desktop\FS'  # r'C:\Users\orico\OneDrive\שולחן העבודה\FS'
+FOLDER = r'C:\Users\orico\Desktop\FS'
 
 
 def disable_key(field, key):
     field.keyPressEvent = lambda event: event.ignore() if event.key() == key else QLineEdit.keyPressEvent(
         field, event)
-
-
-# Example function to open a file
-def open_file(file_path):
-    # Open the file using the default system application
-    os.startfile(file_path)
 
 
 # Example function to delete a file or folder
@@ -61,9 +54,19 @@ def create_fail_label(parent, text, geometry):
     return fail_label
 
 
+def open_selected_item(item_path):
+
+    # Open the item (assuming it's a file)
+    if os.path.isfile(item_path):
+        # Open the file using the default system application
+        os.startfile(item_path)
+
+
 class MainWindow(QWidget, Ui_MainWindow):
     def __init__(self, dir_path):
         super().__init__()
+        self.copied_item_path = None
+        self.cut_item_path = None
         self.dir_path = dir_path
         self.setupUi(self)
         self.model = QFileSystemModel()
@@ -74,27 +77,74 @@ class MainWindow(QWidget, Ui_MainWindow):
         self.upload_files_button.clicked.connect(self.upload_files)  # Connect the upload button to the method
         self.upload_folders_button.clicked.connect(self.upload_folders)
 
-        # Connect the buttons for file and folder actions
-        self.open_button.clicked.connect(self.open_selected_item)
-        self.delete_button.clicked.connect(self.delete_selected_item)
-        self.rename_button.clicked.connect(self.rename_selected_item)
-
         self.create_folder_button.clicked.connect(self.create_new_directory)
         self.create_file_button.clicked.connect(self.create_new_file)
 
-    def open_selected_item(self):
-        # Get the selected item's path
-        selected_index = self.tree_view.currentIndex()
-        item_path = self.model.filePath(selected_index)
+        self.tree_view.setContextMenuPolicy(QtCore.Qt.CustomContextMenu)
+        self.tree_view.customContextMenuRequested.connect(self.create_context_menu)
 
-        # Open the item (assuming it's a file)
-        if os.path.isfile(item_path):
-            open_file(item_path)
+    def create_context_menu(self, position):
+        menu = QtWidgets.QMenu()
+        selected_index = self.tree_view.indexAt(position)
+        if selected_index.isValid():
+            # Get the selected item's path
+            item_path = self.model.filePath(selected_index)
+            if os.path.isfile(item_path):
+                # Add "Open" action to the context menu
+                open_action = menu.addAction("Open")
+                open_action.triggered.connect(lambda: open_selected_item(item_path))
 
-    def delete_selected_item(self):
-        # Get the selected item's path
+            # Add "Rename" action to the context menu
+            rename_action = menu.addAction("Rename")
+            rename_action.triggered.connect(lambda: self.rename_selected_item(item_path))
+
+            # Add "Delete" action to the context menu
+            delete_action = menu.addAction("Delete")
+            delete_action.triggered.connect(lambda: self.delete_selected_item(item_path))
+
+            # Add "Copy" action to the context menu
+            copy_action = menu.addAction("Copy")
+            copy_action.triggered.connect(lambda: self.copy_item(item_path))
+
+            # Add "Cut" action to the context menu
+            cut_action = menu.addAction("Cut")
+            cut_action.triggered.connect(lambda: self.cut_item(item_path))
+
+            # Add "Paste" action to the context menu
+            paste_action = menu.addAction("Paste")
+            paste_action.triggered.connect(lambda: self.paste_item())
+
+        # Show the context menu at the given position
+        menu.exec_(self.tree_view.viewport().mapToGlobal(position))
+
+    def copy_item(self, item_path):
+        self.copied_item_path = item_path
+        self.cut_item_path = None
+
+    def cut_item(self, item_path):
+        self.cut_item_path = item_path
+        self.copied_item_path = None
+
+    def paste_item(self):
         selected_index = self.tree_view.currentIndex()
-        item_path = self.model.filePath(selected_index)
+        destination_path = self.model.filePath(selected_index)
+        if self.copied_item_path:
+            # Copy the file or folder
+            if os.path.isfile(self.copied_item_path):
+                # Copy a file
+                shutil.copy2(self.copied_item_path, destination_path)
+            elif os.path.isdir(self.copied_item_path):
+                # Copy a folder
+                shutil.copytree(self.copied_item_path,
+                                os.path.join(destination_path, os.path.basename(self.copied_item_path)))
+        elif self.cut_item_path:
+            # Move the file or folder
+            shutil.move(self.cut_item_path, destination_path)
+            self.cut_item_path = None
+        # Refresh the file system view
+        self.model.setRootPath(self.model.rootPath())
+
+    def delete_selected_item(self, item_path):
         # Delete the item (file or folder)
         delete_item(item_path)
         # Refresh the file system view
@@ -103,11 +153,7 @@ class MainWindow(QWidget, Ui_MainWindow):
 
         client_socket.send(f"delete_item {relative_path}".encode())
 
-    def rename_selected_item(self):
-        # Get the selected item's path
-        selected_index = self.tree_view.currentIndex()
-        item_path = self.model.filePath(selected_index)
-
+    def rename_selected_item(self, item_path):
         # Open a dialog to get the new name
         new_name, ok = QInputDialog.getText(self, "Rename Item", "New Name:")
         if ok and new_name:
@@ -138,7 +184,7 @@ class MainWindow(QWidget, Ui_MainWindow):
                 return
 
             # Create the new file
-            with open(new_file_path, 'w') as file:
+            with open(new_file_path, 'w'):
                 pass  # Do nothing, just create an empty file
 
             # Refresh the file system view
@@ -184,7 +230,6 @@ class MainWindow(QWidget, Ui_MainWindow):
             # Refresh the file system view
             self.model.setRootPath(self.model.rootPath())
             client_socket.send("upload_dir ".encode() + dumps(directory))
-
 
     def upload_files(self):
         file_dialog = QtWidgets.QFileDialog(self, "Select File to Upload")

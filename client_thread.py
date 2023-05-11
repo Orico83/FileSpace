@@ -7,7 +7,7 @@ from pickle import dumps, loads
 import mysql
 from file_classes import File, Directory
 
-FOLDER = r"C:\Users\cyber\Desktop\ServerFolder"  # r'C:\Users\orico\OneDrive\שולחן העבודה\ServerFolder'
+FOLDER = r"C:\Users\orico\Desktop\ServerFolder"
 database_config = {
     "host": "localhost",
     "user": "root",
