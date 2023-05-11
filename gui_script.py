@@ -2,7 +2,7 @@ import hashlib
 import os
 import shutil
 import socket
-from pickle import loads
+from pickle import loads, dumps
 
 from login_window import UiLogin
 from signup_window import UiSignup
@@ -16,7 +16,7 @@ from main_window import Ui_MainWindow
 
 SERVER_IP = '127.0.0.1'
 PORT = 8080
-FOLDER = r'C:\Users\orico\OneDrive\שולחן העבודה\FS'  # r'C:\Users\cyber\Desktop\FS'
+FOLDER = r'C:\Users\cyber\Desktop\FS'  # r'C:\Users\orico\OneDrive\שולחן העבודה\FS'
 
 
 def disable_key(field, key):
@@ -99,9 +99,9 @@ class MainWindow(QWidget, Ui_MainWindow):
         delete_item(item_path)
         # Refresh the file system view
         self.model.setRootPath(self.model.rootPath())
-        item_path = os.path.relpath(item_path, FOLDER)
+        relative_path = os.path.relpath(item_path, FOLDER)
 
-        client_socket.send(f"delete_item {item_path}".encode())
+        client_socket.send(f"delete_item {relative_path}".encode())
 
     def rename_selected_item(self):
         # Get the selected item's path
@@ -111,11 +111,14 @@ class MainWindow(QWidget, Ui_MainWindow):
         # Open a dialog to get the new name
         new_name, ok = QInputDialog.getText(self, "Rename Item", "New Name:")
         if ok and new_name:
+            if os.path.splitext(new_name)[-1] == '':
+                new_name = new_name + os.path.splitext(item_path)[-1]
             # Rename the item
             rename_item(item_path, new_name)
-
             # Refresh the file system view
             self.model.setRootPath(self.model.rootPath())
+            relative_path = os.path.relpath(item_path, FOLDER)
+            client_socket.send(f"rename_item {relative_path} {new_name}".encode())
 
     def create_new_file(self):
         # Open a dialog to get the new file name
@@ -140,6 +143,8 @@ class MainWindow(QWidget, Ui_MainWindow):
 
             # Refresh the file system view
             self.model.setRootPath(self.model.rootPath())
+            relative_path = os.path.relpath(new_file_path, FOLDER)
+            client_socket.send(f"create_file {relative_path}".encode())
 
     def create_new_directory(self):
         # Open a dialog to get the new directory name
@@ -163,6 +168,8 @@ class MainWindow(QWidget, Ui_MainWindow):
 
             # Refresh the file system view
             self.model.setRootPath(self.model.rootPath())
+            relative_path = os.path.relpath(new_dir_path, FOLDER)
+            client_socket.send(f"create_folder {relative_path}".encode())
 
     def upload_folders(self):
         directory = QtWidgets.QFileDialog.getExistingDirectory(self, "Select Folder to Upload", QtCore.QDir.homePath())
@@ -176,6 +183,8 @@ class MainWindow(QWidget, Ui_MainWindow):
             directory.create(parent_path)
             # Refresh the file system view
             self.model.setRootPath(self.model.rootPath())
+            client_socket.send("upload_dir ".encode() + dumps(directory))
+
 
     def upload_files(self):
         file_dialog = QtWidgets.QFileDialog(self, "Select File to Upload")

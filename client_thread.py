@@ -2,12 +2,12 @@ import hashlib
 import os
 import shutil
 import threading
-from pickle import dumps
+from pickle import dumps, loads
 
 import mysql
 from file_classes import File, Directory
 
-FOLDER = r'C:\Users\orico\OneDrive\שולחן העבודה\ServerFolder'  # r"C:\Users\cyber\Desktop\ServerFolder"
+FOLDER = r"C:\Users\cyber\Desktop\ServerFolder"  # r'C:\Users\orico\OneDrive\שולחן העבודה\ServerFolder'
 database_config = {
     "host": "localhost",
     "user": "root",
@@ -93,6 +93,22 @@ class ClientThread(threading.Thread):
             elif data.startswith("delete_item"):
                 item_path = os.path.join(FOLDER, str(data.split()[1]))
                 delete_item(item_path)
+            elif data.startswith("rename_item"):
+                item_path = os.path.join(FOLDER, data.split()[1])
+                new_name = data.split()[-1]
+                rename_item(item_path, new_name)
+            elif data.startswith("create_file"):
+                new_file_path = os.path.join(FOLDER, data.split()[1])
+                if os.path.exists(new_file_path):
+                    return
+                # Create the new file
+                with open(new_file_path, 'w') as file:
+                    pass  # Do nothing, just create an empty file
+            elif data.startswith("create_folder"):
+                new_dir_path = os.path.join(FOLDER, data.split()[1])
+                os.makedirs(new_dir_path)
+            elif data.startswith("upload_dir"):
+                directory = loads(data.split()[1])
             else:
                 self.client_socket.send("Invalid command".encode())
 
@@ -104,3 +120,11 @@ def delete_item(item_path):
     elif os.path.isdir(item_path):
         # Delete a folder and its contents
         shutil.rmtree(item_path)
+
+
+def rename_item(item_path, new_name):
+    try:
+        new_path = os.path.join(os.path.dirname(item_path), new_name)
+        os.rename(item_path, new_path)
+    except Exception as err:
+        print(err.args[1])
