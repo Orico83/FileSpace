@@ -108,7 +108,18 @@ class ClientThread(threading.Thread):
                 new_dir_path = os.path.join(FOLDER, data.split()[1])
                 os.makedirs(new_dir_path)
             elif data.startswith("upload_dir"):
-                directory = loads(data.split()[1])
+                self.client_socket.send("OK".encode())
+                dir_size = int(data.split(":")[1])
+                bytes_received = 0
+                dir_data = b''
+                while bytes_received < dir_size:
+                    chunk = self.client_socket.recv(1024)
+                    bytes_received += 1024
+                    dir_data += chunk
+                directory = loads(dir_data)
+                location = os.path.join(FOLDER, self.username)
+                directory.create(location)
+
             else:
                 self.client_socket.send("Invalid command".encode())
 

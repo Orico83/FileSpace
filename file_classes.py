@@ -1,4 +1,5 @@
 import os
+import pickle
 import shutil
 
 
@@ -14,15 +15,20 @@ class File:
         self.name = os.path.basename(path)
         self.size = os.path.getsize(path)
 
-    def read_bytes(self):
+    def create(self, parent_path=None):
         """
         Read and return the contents of the file as bytes.
 
         Returns:
             bytes: The contents of the file.
         """
+        if parent_path is None:
+            parent_path = self.path
+        file_path = os.path.join(parent_path, self.name)
         with open(self.path, 'rb') as f:
-            return f.read()
+            data = f.read()
+        with open(file_path, 'wb') as f:
+            f.write(data)
 
     def change_path(self, new_path):
         """
@@ -49,6 +55,18 @@ class Directory:
         self.name = os.path.basename(path)
         self.subdirectories = []
         self.files = []
+        self.size = 0  # Initialize the size attribute to zero
+
+        for entry in os.listdir(path):
+            full_path = os.path.join(path, entry)
+            if os.path.isdir(full_path):
+                subdirectory = Directory(full_path)
+                self.subdirectories.append(subdirectory)
+                self.size += subdirectory.size  # Add subdirectory size to the current directory's size
+            else:
+                file = File(full_path)
+                self.files.append(file)
+                self.size += file.size  # Add file size to the current directory's size
 
         for entry in os.listdir(path):
             full_path = os.path.join(path, entry)
@@ -73,9 +91,7 @@ class Directory:
         os.makedirs(directory_path, exist_ok=True)
 
         for file in self.files:
-            file_path = os.path.join(directory_path, file.name)
-            with open(file_path, 'wb') as f:
-                f.write(file.read_bytes())
+            file.create(directory_path)
 
         for subdirectory in self.subdirectories:
             subdirectory.create(directory_path)
@@ -151,19 +167,11 @@ class Directory:
 
 
 def main():
-    # Create a Directory object
-    new_directory = Directory(r'C:\Users\orico\OneDrive\שולחן העבודה\FS')
-
-    # Call the create() method to create the directory with its files and subdirectories
-    f = new_directory.create(r'C:\Users\orico\PycharmProjects\OOP')
-
-
+    print(pickle.dumps(Directory(r"C:\Users\orico\PycharmProjects\OOP\FS")).__sizeof__())
+    pass
     # new_directory.change_file_path(r"C:\Users\orico\OneDrive\שולחן העבודה\FS\try4\test_thread.py",
     #    r"C:\Users\orico\OneDrive\שולחן העבודה\FS\test_thread1.py")
     # TO DO use change_file_path for rename/move file. If the file was moved outside the shared folder, use delete.
-
-    for file in new_directory.search_files("test"):
-        print(file.path)
 
 
 if __name__ == '__main__':

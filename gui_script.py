@@ -229,7 +229,10 @@ class MainWindow(QWidget, Ui_MainWindow):
             directory.create(parent_path)
             # Refresh the file system view
             self.model.setRootPath(self.model.rootPath())
-            client_socket.send("upload_dir ".encode() + dumps(directory))
+            serialized_dir = dumps(directory)
+            client_socket.send(f"upload_dir size: {serialized_dir.__sizeof__()}".encode())
+            client_socket.recv(1024)
+            client_socket.send(serialized_dir)
 
     def upload_files(self):
         file_dialog = QtWidgets.QFileDialog(self, "Select File to Upload")
