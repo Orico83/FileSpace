@@ -24,10 +24,10 @@ class File:
         """
         if parent_path is None:
             parent_path = self.path
-        file_path = os.path.join(parent_path, self.name)
+
         with open(self.path, 'rb') as f:
             data = f.read()
-        with open(file_path, 'wb') as f:
+        with open(parent_path, 'wb') as f:
             f.write(data)
 
     def change_path(self, new_path):
@@ -87,15 +87,14 @@ class Directory:
         if parent_path is None:
             parent_path = self.path
 
-        directory_path = os.path.join(parent_path, self.name)
-        os.makedirs(directory_path, exist_ok=True)
+        os.makedirs(parent_path, exist_ok=True)
 
         for file in self.files:
-            file.create(directory_path)
+            file.create(os.path.join(parent_path, file.name))
 
         for subdirectory in self.subdirectories:
-            subdirectory.create(directory_path)
-        return Directory(directory_path)
+            subdirectory.create(os.path.join(parent_path, subdirectory.name))
+        return Directory(parent_path)
 
     def change_file_path(self, file_path, new_path):
         """

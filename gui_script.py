@@ -55,7 +55,6 @@ def create_fail_label(parent, text, geometry):
 
 
 def open_selected_item(item_path):
-
     # Open the item (assuming it's a file)
     if os.path.isfile(item_path):
         # Open the file using the default system application
@@ -68,24 +67,84 @@ class MainWindow(QWidget, Ui_MainWindow):
         self.copied_item_path = None
         self.cut_item_path = None
         self.dir_path = dir_path
+        self.directory_history = []  # List to store directory history
         self.setupUi(self)
         self.model = QFileSystemModel()
         self.model.setRootPath(dir_path)
-        self.tree_view.setModel(self.model)
-        self.tree_view.setRootIndex(self.model.index(dir_path))
-        self.tree_view.setAlternatingRowColors(True)
+        self.list_view.setModel(self.model)
+        self.list_view.setRootIndex(self.model.index(dir_path))
+        self.list_view.setIconSize(QtCore.QSize(32, 32))
+        self.list_view.setGridSize(QtCore.QSize(96, 96))
+        self.list_view.setViewMode(QtWidgets.QListView.IconMode)
+        self.set_initial_directory()
+
+        self.list_view.doubleClicked.connect(self.on_list_view_double_clicked)
         self.upload_files_button.clicked.connect(self.upload_files)  # Connect the upload button to the method
         self.upload_folders_button.clicked.connect(self.upload_folders)
 
         self.create_folder_button.clicked.connect(self.create_new_directory)
         self.create_file_button.clicked.connect(self.create_new_file)
 
-        self.tree_view.setContextMenuPolicy(QtCore.Qt.CustomContextMenu)
-        self.tree_view.customContextMenuRequested.connect(self.create_context_menu)
+        self.list_view.setContextMenuPolicy(QtCore.Qt.CustomContextMenu)
+        self.list_view.customContextMenuRequested.connect(self.create_context_menu)
+        self.go_back_button.hide()
+        self.go_back_button.clicked.connect(self.go_back)
+
+    def on_list_view_double_clicked(self, index):
+        # Check if the selected index represents a directory
+        if self.model.isDir(index):
+            # Get the path of the double-clicked directory
+            directory_path = self.model.filePath(index)
+            # Set the root path of the model to the double-clicked directory
+            self.model.setRootPath(directory_path)
+            # Set the root index of the list view to the new root path
+            self.list_view.setRootIndex(self.model.index(directory_path))
+            self.go_back_button.show()
+            self.directory_history.append(directory_path)
+
+    def go_back(self):
+        if len(self.directory_history) >= 1:
+            # Remove the current directory from the history
+            self.directory_history.pop()
+            # Get the previous directory path
+            parent_directory_path = self.directory_history[-1]
+            # Set the root path of the model to the parent directory
+            self.model.setRootPath(parent_directory_path)
+            # Set the root index of the list view to the new root path
+            self.list_view.setRootIndex(self.model.index(parent_directory_path))
+
+        # Show or hide the "Go Back" button based on the directory history
+        if len(self.directory_history) <= 1:
+            self.go_back_button.hide()
+        else:
+            self.go_back_button.show()
+
+    def update_directory_history(self, directory_path):
+        # Add the current directory path to the history
+        self.directory_history.append(directory_path)
+
+    def set_initial_directory(self):
+        self.model.setRootPath(self.dir_path)
+        self.list_view.setRootIndex(self.model.index(self.dir_path))
+        self.directory_history.append(self.dir_path)
+        self.go_back_button.hide()
+
+    def copy_files_or_folders(self, paths, destination_path):
+        for path in paths:
+            if os.path.isfile(path):
+                # Copy a file
+                shutil.copy2(path, destination_path)
+            elif os.path.isdir(path):
+                # Copy a folder
+                folder_name = os.path.basename(path)
+                destination_folder_path = os.path.join(destination_path, folder_name)
+                shutil.copytree(path, destination_folder_path)
+        # Refresh the file system view
+        self.model.setRootPath(self.model.rootPath())
 
     def create_context_menu(self, position):
         menu = QtWidgets.QMenu()
-        selected_index = self.tree_view.indexAt(position)
+        selected_index = self.list_view.indexAt(position)
         if selected_index.isValid():
             # Get the selected item's path
             item_path = self.model.filePath(selected_index)
@@ -113,9 +172,22 @@ class MainWindow(QWidget, Ui_MainWindow):
             # Add "Paste" action to the context menu
             paste_action = menu.addAction("Paste")
             paste_action.triggered.connect(lambda: self.paste_item())
+        else:
+            # Add "Paste" action to the context menu
+            paste_action = menu.addAction("Paste")
+            paste_action.triggered.connect(lambda: self.paste_item())
 
+            # Add "New" submenu to the context menu
+            new_menu = menu.addMenu("New")
+            # Add "Create File" action to the "New" submenu
+            create_file_action = new_menu.addAction("Create File")
+            create_file_action.triggered.connect(self.create_new_file)
+            # Add "Create Folder" action to the "New" submenu
+            create_folder_action = new_menu.addAction("Create Folder")
+            create_folder_action.triggered.connect(self.create_new_directory)
         # Show the context menu at the given position
-        menu.exec_(self.tree_view.viewport().mapToGlobal(position))
+        menu.exec_(self.list_view.viewport().mapToGlobal(position))
+
 
     def copy_item(self, item_path):
         self.copied_item_path = item_path
@@ -126,21 +198,30 @@ class MainWindow(QWidget, Ui_MainWindow):
         self.copied_item_path = None
 
     def paste_item(self):
-        selected_index = self.tree_view.currentIndex()
-        destination_path = self.model.filePath(selected_index)
+        destination_path = self.model.rootPath()
         if self.copied_item_path:
             # Copy the file or folder
             if os.path.isfile(self.copied_item_path):
-                # Copy a file
-                shutil.copy2(self.copied_item_path, destination_path)
+                try:
+                    # Copy a file
+                    shutil.copy2(self.copied_item_path, destination_path)
+                except shutil.SameFileError:
+                    pass
             elif os.path.isdir(self.copied_item_path):
-                # Copy a folder
-                shutil.copytree(self.copied_item_path,
-                                os.path.join(destination_path, os.path.basename(self.copied_item_path)))
+                try:
+                    # Copy a folder
+                    shutil.copytree(self.copied_item_path,
+                                    os.path.join(destination_path, os.path.basename(self.copied_item_path)))
+                except FileExistsError:
+                    pass
         elif self.cut_item_path:
-            # Move the file or folder
-            shutil.move(self.cut_item_path, destination_path)
-            self.cut_item_path = None
+            try:
+                # Move the file or folder
+                shutil.move(self.cut_item_path, destination_path)
+                self.copied_item_path = os.path.join(destination_path, os.path.basename(self.cut_item_path))
+                self.cut_item_path = None
+            except shutil.Error:
+                pass
         # Refresh the file system view
         self.model.setRootPath(self.model.rootPath())
 
@@ -169,8 +250,7 @@ class MainWindow(QWidget, Ui_MainWindow):
     def create_new_file(self):
         # Open a dialog to get the new file name
         file_name, ok = QInputDialog.getText(self, "Create New File", "File Name:")
-        parent_index = self.tree_view.currentIndex()
-        parent_path = self.model.filePath(parent_index)
+        parent_path = self.model.rootPath()
         if ok and file_name:
             # Check if a directory is selected
             if not os.path.isdir(parent_path):
@@ -195,8 +275,7 @@ class MainWindow(QWidget, Ui_MainWindow):
     def create_new_directory(self):
         # Open a dialog to get the new directory name
         dir_name, ok = QInputDialog.getText(self, "Create New Directory", "Directory Name:")
-        parent_index = self.tree_view.currentIndex()
-        parent_path = self.model.filePath(parent_index)
+        parent_path = self.model.rootPath()
         if ok and dir_name:
             # Check if a directory is selected
             if not os.path.isdir(parent_path):
@@ -219,18 +298,19 @@ class MainWindow(QWidget, Ui_MainWindow):
 
     def upload_folders(self):
         directory = QtWidgets.QFileDialog.getExistingDirectory(self, "Select Folder to Upload", QtCore.QDir.homePath())
-        parent_index = self.tree_view.currentIndex()
-        parent_path = self.model.filePath(parent_index)
+        parent_path = self.model.rootPath()
         if directory:
             # Check if a directory is selected
             if not os.path.isdir(parent_path):
                 parent_path = self.dir_path
             directory = Directory(directory)
-            directory.create(parent_path)
+            new_dir = directory.create(os.path.join(parent_path, directory.name))
             # Refresh the file system view
             self.model.setRootPath(self.model.rootPath())
-            serialized_dir = dumps(directory)
-            client_socket.send(f"upload_dir size: {serialized_dir.__sizeof__()}".encode())
+            serialized_dir = dumps(new_dir)
+            c = os.path.relpath(new_dir.path, FOLDER)
+            client_socket.send(
+                f"upload_dir || {serialized_dir.__sizeof__()} || {os.path.relpath(new_dir.path, FOLDER)}".encode())
             client_socket.recv(1024)
             client_socket.send(serialized_dir)
 
@@ -238,26 +318,24 @@ class MainWindow(QWidget, Ui_MainWindow):
         file_dialog = QtWidgets.QFileDialog(self, "Select File to Upload")
         file_dialog.setFileMode(QtWidgets.QFileDialog.ExistingFiles | QtWidgets.QFileDialog.Directory)
         file_dialog.setOption(QtWidgets.QFileDialog.ShowDirsOnly, False)  # Show both files and directories
-        parent_index = self.tree_view.currentIndex()
-        parent_path = self.model.filePath(parent_index)
+        parent_path = self.model.rootPath()
         if file_dialog.exec_():
             # Check if a directory is selected
             if not os.path.isdir(parent_path):
                 parent_path = self.dir_path
             selected_files = file_dialog.selectedFiles()
             for file_path in selected_files:
-                if os.path.isfile(file_path):
-                    # Upload a single file
-                    file = File(file_path)
-                    destination_path = os.path.join(parent_path,
-                                                    file.name)
-                    shutil.copyfile(file.path, destination_path)
-                elif os.path.isdir(file_path):
-                    # Upload a directory
-                    directory = Directory(file_path)
-                    destination_path = os.path.join(FOLDER, self.model.filePath(self.tree_view.currentIndex()),
-                                                    directory.name)
-                    directory.create(destination_path)
+                # Upload a single file
+                file = File(file_path)
+                destination_path = os.path.join(parent_path,
+                                                file.name)
+                shutil.copyfile(file.path, destination_path)
+                serialized_file = dumps(file)
+                client_socket.send(
+                    f"upload_file || {serialized_file.__sizeof__()} || {os.path.relpath(destination_path, FOLDER)}".encode())
+                client_socket.recv(1024)
+                client_socket.send(serialized_file)
+                client_socket.recv(1024)
 
             # Refresh the file system view
             self.model.setRootPath(self.model.rootPath())
@@ -293,8 +371,17 @@ class LoginWindow(QMainWindow, UiLogin):
             # Welcome message
             print(f"Login Successful - Welcome, {username}!")
             client_socket.send("download_folder".encode())
-            folder: Directory = loads(client_socket.recv(1024))
-            f = folder.create(FOLDER)
+            data = client_socket.recv(1024).decode()
+            dir_size = int(data.split(":")[1])
+            client_socket.send("OK".encode())
+            bytes_received = 0
+            dir_data = b''
+            while bytes_received < dir_size:
+                chunk = client_socket.recv(1024)
+                bytes_received += 1024
+                dir_data += chunk
+            folder = loads(dir_data)
+            f = folder.create(os.path.join(FOLDER, folder.name))
             self.goto_files(f.path)
         else:
             print("Login Failed - Invalid username or password")

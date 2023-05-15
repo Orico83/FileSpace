@@ -45,9 +45,12 @@ def main():
 
     while True:
         # Accept incoming connections and start a new thread for each client
-        client_socket, client_address = server_socket.accept()
-        client_thread = ClientThread(client_socket, client_address)
-        client_thread.start()
+        try:
+            client_socket, client_address = server_socket.accept()
+            client_thread = ClientThread(client_socket, client_address)
+            client_thread.start()
+        except Exception as err:
+            print(err)
 
 
 if __name__ == '__main__':

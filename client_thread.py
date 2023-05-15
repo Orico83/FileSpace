@@ -25,54 +25,57 @@ class ClientThread(threading.Thread):
         self.folder_path = None
 
     def run(self):
-        print(f"Connection from {self.client_address}")
+        try:
 
-        # Receive the command from the client (login or signup)
-        data = self.client_socket.recv(1024).decode().strip()
-        command = data.split()[0]
-        print(command)
+            print(f"Connection from {self.client_address}")
+            # Receive the command from the client (login or signup)
+            data = self.client_socket.recv(1024).decode().strip()
+            command = data.split()[0]
+            print(command)
 
-        # Verify the username and password against the MySQL table
-        mysql_connection = mysql.connector.connect(**database_config)
-        mysql_cursor = mysql_connection.cursor()
-        if command == "login":
-            # Receive the username and password from the client
-            self.username = data.split()[1]
-            password = data.split()[2]
-            print(f"Username: {self.username} | Password: {password}")
-            mysql_cursor.execute("SELECT * FROM users WHERE username = %s AND password = %s", (self.username, password))
-            result = mysql_cursor.fetchone()
-            if result:
-                self.client_socket.send("OK".encode())
-                self.folder_path = os.path.join(FOLDER, self.username)
-                self.handle_commands()  # Call a method to handle subsequent commands
+            # Verify the username and password against the MySQL table
+            mysql_connection = mysql.connector.connect(**database_config)
+            mysql_cursor = mysql_connection.cursor()
+            if command == "login":
+                # Receive the username and password from the client
+                self.username = data.split()[1]
+                password = data.split()[2]
+                print(f"Username: {self.username} | Password: {password}")
+                mysql_cursor.execute("SELECT * FROM users WHERE username = %s AND password = %s", (self.username, password))
+                result = mysql_cursor.fetchone()
+                if result:
+                    self.client_socket.send("OK".encode())
+                    self.folder_path = os.path.join(FOLDER, self.username)
+                    self.handle_commands()  # Call a method to handle subsequent commands
 
-            else:
-                self.client_socket.send("FAIL".encode())
-        elif command == "signup":
-            # Receive the username and password from the client
-            self.username = data.split()[1]
-            password = data.split()[2]
-            print(f"Username: {self.username} | Password: {password}")
-            # Check if the username already exists in the table
-            mysql_cursor.execute("SELECT * FROM users WHERE username = %s", (self.username,))
-            result = mysql_cursor.fetchone()
-            if result:
-                self.client_socket.send("FAIL".encode())
-            else:
-                mysql_cursor.execute("INSERT INTO users (username, password) VALUES (%s, %s)",
-                                     (self.username, password))
-                mysql_connection.commit()
-                self.folder_path = os.path.join(FOLDER, self.username)
-                os.makedirs(self.folder_path)
-                self.client_socket.send("OK".encode())
-                self.handle_commands()  # Call a method to handle subsequent commands
+                else:
+                    self.client_socket.send("FAIL".encode())
+            elif command == "signup":
+                # Receive the username and password from the client
+                self.username = data.split()[1]
+                password = data.split()[2]
+                print(f"Username: {self.username} | Password: {password}")
+                # Check if the username already exists in the table
+                mysql_cursor.execute("SELECT * FROM users WHERE username = %s", (self.username,))
+                result = mysql_cursor.fetchone()
+                if result:
+                    self.client_socket.send("FAIL".encode())
+                else:
+                    mysql_cursor.execute("INSERT INTO users (username, password) VALUES (%s, %s)",
+                                         (self.username, password))
+                    mysql_connection.commit()
+                    self.folder_path = os.path.join(FOLDER, self.username)
+                    os.makedirs(self.folder_path)
+                    self.client_socket.send("OK".encode())
+                    self.handle_commands()  # Call a method to handle subsequent commands
 
-        # Close the MySQL connection and client socket
-        mysql_cursor.close()
-        mysql_connection.close()
-        self.client_socket.close()
-        print(f"Connection from {self.client_address} closed")
+            # Close the MySQL connection and client socket
+            mysql_cursor.close()
+            mysql_connection.close()
+            self.client_socket.close()
+            print(f"Connection from {self.client_address} closed")
+        except Exception as err:
+            print(err)
 
     def handle_commands(self):
         while True:
@@ -89,7 +92,10 @@ class ClientThread(threading.Thread):
                     os.makedirs(self.folder_path)
                     folder = Directory(self.folder_path)
                 # Handle command1
-                self.client_socket.send(dumps(folder))
+                serialized_dir = dumps(folder)
+                self.client_socket.send(f"size: {serialized_dir.__sizeof__()}".encode())
+                self.client_socket.recv(1024)
+                self.client_socket.send(serialized_dir)
             elif data.startswith("delete_item"):
                 item_path = os.path.join(FOLDER, str(data.split()[1]))
                 delete_item(item_path)
@@ -109,7 +115,7 @@ class ClientThread(threading.Thread):
                 os.makedirs(new_dir_path)
             elif data.startswith("upload_dir"):
                 self.client_socket.send("OK".encode())
-                dir_size = int(data.split(":")[1])
+                dir_size = int(data.split("||")[1])
                 bytes_received = 0
                 dir_data = b''
                 while bytes_received < dir_size:
@@ -117,8 +123,22 @@ class ClientThread(threading.Thread):
                     bytes_received += 1024
                     dir_data += chunk
                 directory = loads(dir_data)
-                location = os.path.join(FOLDER, self.username)
+                location = os.path.join(FOLDER, data.split("||")[2].strip())
+                print(location)
                 directory.create(location)
+            elif data.startswith("upload_file"):
+                self.client_socket.send("OK".encode())
+                dir_size = int(data.split("||")[1])
+                bytes_received = 0
+                file_data = b''
+                while bytes_received < dir_size:
+                    chunk = self.client_socket.recv(1024)
+                    bytes_received += 1024
+                    file_data += chunk
+                file = loads(file_data)
+                location = os.path.join(FOLDER, data.split("||")[2].strip())
+                file.create(location)
+                self.client_socket.send("OK".encode())
 
             else:
                 self.client_socket.send("Invalid command".encode())
