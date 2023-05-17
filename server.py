@@ -17,14 +17,23 @@ database_config = {
     "database": "test"
 }
 
+# Define the SQL statement to create the table
+create_table_query = """
+CREATE TABLE IF NOT EXISTS filespace (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    username VARCHAR(255),
+    password VARCHAR(255),
+    directory BLOB
+)
+"""
+
 
 def main():
     # Create the MySQL table if it doesn't exist
     try:
         mysql_connection = mysql.connector.connect(**database_config)
         mysql_cursor = mysql_connection.cursor()
-        mysql_cursor.execute("CREATE TABLE IF NOT EXISTS users (id INT AUTO_INCREMENT PRIMARY KEY, username VARCHAR("
-                             "255), password VARCHAR(255))")
+        mysql_cursor.execute(create_table_query)
         mysql_connection.commit()
     except mysql.connector.Error as error:
         print(f"Error creating MySQL table: {error}")

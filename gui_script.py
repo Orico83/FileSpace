@@ -54,7 +54,7 @@ def create_fail_label(parent, text, geometry):
     return fail_label
 
 
-def open_selected_item(item_path):
+def open_file(item_path):
     # Open the item (assuming it's a file)
     if os.path.isfile(item_path):
         # Open the file using the default system application
@@ -101,6 +101,9 @@ class MainWindow(QWidget, Ui_MainWindow):
             self.list_view.setRootIndex(self.model.index(directory_path))
             self.go_back_button.show()
             self.directory_history.append(directory_path)
+        else:
+            file_path = self.model.filePath(index)
+            open_file(file_path)
 
     def go_back(self):
         if len(self.directory_history) >= 1:
@@ -151,7 +154,7 @@ class MainWindow(QWidget, Ui_MainWindow):
             if os.path.isfile(item_path):
                 # Add "Open" action to the context menu
                 open_action = menu.addAction("Open")
-                open_action.triggered.connect(lambda: open_selected_item(item_path))
+                open_action.triggered.connect(lambda: open_file(item_path))
 
             # Add "Rename" action to the context menu
             rename_action = menu.addAction("Rename")
@@ -187,7 +190,6 @@ class MainWindow(QWidget, Ui_MainWindow):
             create_folder_action.triggered.connect(self.create_new_directory)
         # Show the context menu at the given position
         menu.exec_(self.list_view.viewport().mapToGlobal(position))
-
 
     def copy_item(self, item_path):
         self.copied_item_path = item_path

@@ -2,6 +2,8 @@ import os
 import pickle
 import shutil
 
+FOLDER = r'C:\Users\orico\Desktop\FS'
+
 
 class File:
     def __init__(self, path):
@@ -14,6 +16,10 @@ class File:
         self.path = path
         self.name = os.path.basename(path)
         self.size = os.path.getsize(path)
+        self.rel_path = None
+        with open(self.path, "rb") as f:
+            data = f.read()
+        self.data = data
 
     def create(self, parent_path=None):
         """
@@ -22,13 +28,14 @@ class File:
         Returns:
             bytes: The contents of the file.
         """
+        self.rel_path = os.path.relpath(self.path, "ServerFolder")
+        self.path = os.path.join(FOLDER, self.rel_path)
+        data = self.data
         if parent_path is None:
             parent_path = self.path
-
-        with open(self.path, 'rb') as f:
-            data = f.read()
-        with open(parent_path, 'wb') as f:
-            f.write(data)
+        if File(parent_path).data != data:
+            with open(parent_path, 'wb') as f:
+                f.write(data)
 
     def change_path(self, new_path):
         """
@@ -68,15 +75,6 @@ class Directory:
                 self.files.append(file)
                 self.size += file.size  # Add file size to the current directory's size
 
-        for entry in os.listdir(path):
-            full_path = os.path.join(path, entry)
-            if os.path.isdir(full_path):
-                subdirectory = Directory(full_path)
-                self.subdirectories.append(subdirectory)
-            else:
-                file = File(full_path)
-                self.files.append(file)
-
     def create(self, parent_path=None):
         """
         Recursively create the directory and its contents.
@@ -88,6 +86,19 @@ class Directory:
             parent_path = self.path
 
         os.makedirs(parent_path, exist_ok=True)
+
+        # Remove non-matching files and subdirectories
+        existing_files = [file.name for file in self.files]
+        existing_subdirectories = [subdir.name for subdir in self.subdirectories]
+
+        for item_name in os.listdir(parent_path):
+            item_path = os.path.join(parent_path, item_name)
+
+            if os.path.isfile(item_path) and item_name not in existing_files:
+                os.remove(item_path)
+
+            if os.path.isdir(item_path) and item_name not in existing_subdirectories:
+                shutil.rmtree(item_path)
 
         for file in self.files:
             file.create(os.path.join(parent_path, file.name))
@@ -166,7 +177,7 @@ class Directory:
 
 
 def main():
-    print(pickle.dumps(Directory(r"C:\Users\orico\PycharmProjects\OOP\FS")).__sizeof__())
+    print(pickle.dumps(Directory(r"C:\Users\orico\Desktop\ServerFolder\ori")).__sizeof__())
     pass
     # new_directory.change_file_path(r"C:\Users\orico\OneDrive\שולחן העבודה\FS\try4\test_thread.py",
     #    r"C:\Users\orico\OneDrive\שולחן העבודה\FS\test_thread1.py")
