@@ -37,6 +37,16 @@ class File:
             with open(parent_path, 'wb') as f:
                 f.write(data)
 
+    def create_in_directory(self, directory_path):
+        """
+        Create the file in the specified directory.
+
+        Args:
+            directory_path (str): The path to the directory where the file will be created.
+        """
+        new_path = os.path.join(directory_path, self.name)
+        self.create(new_path)
+
     def change_path(self, new_path):
         """
         Change the path of the file.
@@ -106,6 +116,18 @@ class Directory:
         for subdirectory in self.subdirectories:
             subdirectory.create(os.path.join(parent_path, subdirectory.name))
         return Directory(parent_path)
+
+    def create_in_directory(self, directory_path):
+        """
+        Create the directory and its contents in the specified directory.
+
+        Args:
+            directory_path (str): The path to the directory where the new directory will be created.
+        """
+        new_path = os.path.join(directory_path, self.name)
+        new_directory = Directory(new_path)
+        new_directory.create()
+        return new_directory
 
     def change_file_path(self, file_path, new_path):
         """
