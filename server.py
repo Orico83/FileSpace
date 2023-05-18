@@ -19,12 +19,10 @@ database_config = {
 
 # Define the SQL statement to create the table
 create_table_query = """
-CREATE TABLE IF NOT EXISTS filespace (
+CREATE TABLE IF NOT EXISTS users (
     id INT AUTO_INCREMENT PRIMARY KEY,
     username VARCHAR(255),
-    password VARCHAR(255),
-    directory BLOB
-)
+    password VARCHAR(255),)
 """
 
 

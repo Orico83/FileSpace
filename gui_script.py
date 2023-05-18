@@ -15,7 +15,7 @@ from main_window import Ui_MainWindow
 
 SERVER_IP = '127.0.0.1'
 PORT = 8080
-FOLDER = r'C:\Users\orico\Desktop\FS'
+FOLDER = r"C:\Users\cyber\Desktop\FS"
 
 
 def disable_key(field, key):
@@ -82,13 +82,17 @@ class MainWindow(QWidget, Ui_MainWindow):
         self.upload_files_button.clicked.connect(self.upload_files)  # Connect the upload button to the method
         self.upload_folders_button.clicked.connect(self.upload_folders)
 
-        self.create_folder_button.clicked.connect(self.create_new_directory)
-        self.create_file_button.clicked.connect(self.create_new_file)
-
         self.list_view.setContextMenuPolicy(QtCore.Qt.CustomContextMenu)
         self.list_view.customContextMenuRequested.connect(self.create_context_menu)
         self.go_back_button.hide()
         self.go_back_button.clicked.connect(self.go_back)
+        self.update_changes_button.clicked.connect(self.update_changes)
+
+    def update_changes(self):
+        directory = dumps(Directory(self.dir_path))
+        client_socket.send(f"update_changes size: {directory.__sizeof__()}".encode())
+        client_socket.recv(1024)
+        client_socket.send(directory)
 
     def on_list_view_double_clicked(self, index):
         # Check if the selected index represents a directory

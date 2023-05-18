@@ -68,32 +68,6 @@
       <string>Upload Folders</string>
      </property>
     </widget>
-    <widget class="QPushButton" name="create_folder_button">
-     <property name="geometry">
-      <rect>
-       <x>730</x>
-       <y>200</y>
-       <width>81</width>
-       <height>23</height>
-      </rect>
-     </property>
-     <property name="text">
-      <string>Create Folder</string>
-     </property>
-    </widget>
-    <widget class="QPushButton" name="create_file_button">
-     <property name="geometry">
-      <rect>
-       <x>730</x>
-       <y>160</y>
-       <width>81</width>
-       <height>23</height>
-      </rect>
-     </property>
-     <property name="text">
-      <string>Create File</string>
-     </property>
-    </widget>
     <widget class="QPushButton" name="go_back_button">
      <property name="geometry">
       <rect>
@@ -142,6 +116,19 @@
      </property>
      <property name="viewMode">
       <enum>QListView::IconMode</enum>
+     </property>
+    </widget>
+    <widget class="QPushButton" name="update_changes_button">
+     <property name="geometry">
+      <rect>
+       <x>730</x>
+       <y>40</y>
+       <width>81</width>
+       <height>23</height>
+      </rect>
+     </property>
+     <property name="text">
+      <string>Update</string>
      </property>
     </widget>
    </widget>

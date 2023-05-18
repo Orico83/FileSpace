@@ -2,7 +2,7 @@ import os
 import pickle
 import shutil
 
-FOLDER = r'C:\Users\orico\Desktop\FS'
+FOLDER = r'.\ServerFolder'
 
 
 class File:
@@ -28,12 +28,20 @@ class File:
         Returns:
             bytes: The contents of the file.
         """
-        self.rel_path = os.path.relpath(self.path, "ServerFolder")
-        self.path = os.path.join(FOLDER, self.rel_path)
+        if "ServerFolder" in self.path:
+            self.rel_path = os.path.relpath(self.path, "./ServerFolder")
+            self.path = os.path.join(FOLDER, self.rel_path)
+        elif r"Desktop\FS" in self.path:
+            self.rel_path = self.path.split("Desktop/FS")[-1]
+            self.path = os.path.join(FOLDER, self.rel_path)
+
         data = self.data
         if parent_path is None:
             parent_path = self.path
-        if File(parent_path).data != data:
+        with open(parent_path, 'wb'):
+            pass
+        file = File(parent_path)
+        if file.data != data:
             with open(parent_path, 'wb') as f:
                 f.write(data)
 
