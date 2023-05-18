@@ -38,12 +38,16 @@ class File:
         data = self.data
         if parent_path is None:
             parent_path = self.path
-        with open(parent_path, 'wb'):
-            pass
-        file = File(parent_path)
-        if file.data != data:
+        if os.path.exists(parent_path):
+            file = File(parent_path)
+            if file.data != data:
+                with open(parent_path, 'wb'):
+                    pass
+                with open(parent_path, 'wb') as f:
+                    f.write(data)
+        else:
             with open(parent_path, 'wb') as f:
-                f.write(data)
+                f.write(self.data)
 
     def create_in_directory(self, directory_path):
         """

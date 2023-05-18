@@ -97,21 +97,21 @@ class ClientThread(threading.Thread):
                 self.client_socket.recv(1024)
                 self.client_socket.send(serialized_dir)
             elif data.startswith("delete_item"):
-                item_path = os.path.join(FOLDER, str(data.split()[1]))
+                item_path = os.path.join(FOLDER, data.split("||")[1].strip())
                 delete_item(item_path)
             elif data.startswith("rename_item"):
-                item_path = os.path.join(FOLDER, data.split()[1])
-                new_name = data.split()[-1]
+                item_path = os.path.join(FOLDER, data.split("||")[1].strip())
+                new_name = data.split("||")[-1].strip()
                 rename_item(item_path, new_name)
             elif data.startswith("create_file"):
-                new_file_path = os.path.join(FOLDER, data.split()[1])
+                new_file_path = os.path.join(FOLDER, data.split("||")[1].strip())
                 if os.path.exists(new_file_path):
                     return
                 # Create the new file
                 with open(new_file_path, 'w') as file:
                     pass  # Do nothing, just create an empty file
             elif data.startswith("create_folder"):
-                new_dir_path = os.path.join(FOLDER, data.split()[1])
+                new_dir_path = os.path.join(FOLDER, data.split("||")[1].strip())
                 os.makedirs(new_dir_path)
             elif data.startswith("upload_dir"):
                 self.client_socket.send("OK".encode())

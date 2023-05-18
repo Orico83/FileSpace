@@ -15,7 +15,7 @@ from main_window import Ui_MainWindow
 
 SERVER_IP = '127.0.0.1'
 PORT = 8080
-FOLDER = r"C:\Users\cyber\Desktop\FS"
+FOLDER = r"C:\Users\orico\Desktop\FS"
 
 
 def disable_key(field, key):
@@ -211,6 +211,7 @@ class MainWindow(QWidget, Ui_MainWindow):
                 try:
                     # Copy a file
                     shutil.copy2(self.copied_item_path, destination_path)
+                    self.update_changes()
                 except shutil.SameFileError:
                     pass
             elif os.path.isdir(self.copied_item_path):
@@ -218,6 +219,7 @@ class MainWindow(QWidget, Ui_MainWindow):
                     # Copy a folder
                     shutil.copytree(self.copied_item_path,
                                     os.path.join(destination_path, os.path.basename(self.copied_item_path)))
+                    self.update_changes()
                 except FileExistsError:
                     pass
         elif self.cut_item_path:
@@ -226,6 +228,7 @@ class MainWindow(QWidget, Ui_MainWindow):
                 shutil.move(self.cut_item_path, destination_path)
                 self.copied_item_path = os.path.join(destination_path, os.path.basename(self.cut_item_path))
                 self.cut_item_path = None
+                self.update_changes()
             except shutil.Error:
                 pass
         # Refresh the file system view
@@ -238,7 +241,7 @@ class MainWindow(QWidget, Ui_MainWindow):
         self.model.setRootPath(self.model.rootPath())
         relative_path = os.path.relpath(item_path, FOLDER)
 
-        client_socket.send(f"delete_item {relative_path}".encode())
+        client_socket.send(f"delete_item || {relative_path}".encode())
 
     def rename_selected_item(self, item_path):
         # Open a dialog to get the new name
@@ -251,7 +254,7 @@ class MainWindow(QWidget, Ui_MainWindow):
             # Refresh the file system view
             self.model.setRootPath(self.model.rootPath())
             relative_path = os.path.relpath(item_path, FOLDER)
-            client_socket.send(f"rename_item {relative_path} {new_name}".encode())
+            client_socket.send(f"rename_item || {relative_path} || {new_name}".encode())
 
     def create_new_file(self):
         # Open a dialog to get the new file name
@@ -276,7 +279,7 @@ class MainWindow(QWidget, Ui_MainWindow):
             # Refresh the file system view
             self.model.setRootPath(self.model.rootPath())
             relative_path = os.path.relpath(new_file_path, FOLDER)
-            client_socket.send(f"create_file {relative_path}".encode())
+            client_socket.send(f"create_file || {relative_path}".encode())
 
     def create_new_directory(self):
         # Open a dialog to get the new directory name
@@ -300,7 +303,7 @@ class MainWindow(QWidget, Ui_MainWindow):
             # Refresh the file system view
             self.model.setRootPath(self.model.rootPath())
             relative_path = os.path.relpath(new_dir_path, FOLDER)
-            client_socket.send(f"create_folder {relative_path}".encode())
+            client_socket.send(f"create_folder || {relative_path}".encode())
 
     def upload_folders(self):
         directory = QtWidgets.QFileDialog.getExistingDirectory(self, "Select Folder to Upload", QtCore.QDir.homePath())
