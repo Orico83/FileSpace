@@ -213,9 +213,6 @@ class Directory:
 def main():
     print(pickle.dumps(Directory(r"C:\Users\orico\Desktop\ServerFolder\ori")).__sizeof__())
     pass
-    # new_directory.change_file_path(r"C:\Users\orico\OneDrive\שולחן העבודה\FS\try4\test_thread.py",
-    #    r"C:\Users\orico\OneDrive\שולחן העבודה\FS\test_thread1.py")
-    # TO DO use change_file_path for rename/move file. If the file was moved outside the shared folder, use delete.
 
 
 if __name__ == '__main__':

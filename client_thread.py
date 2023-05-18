@@ -41,7 +41,8 @@ class ClientThread(threading.Thread):
                 self.username = data.split()[1]
                 password = data.split()[2]
                 print(f"Username: {self.username} | Password: {password}")
-                mysql_cursor.execute("SELECT * FROM users WHERE username = %s AND password = %s", (self.username, password))
+                mysql_cursor.execute("SELECT * FROM users WHERE username = %s AND password = %s",
+                                     (self.username, password))
                 result = mysql_cursor.fetchone()
                 if result:
                     self.client_socket.send("OK".encode())
@@ -153,7 +154,6 @@ class ClientThread(threading.Thread):
 
             else:
                 self.client_socket.send("Invalid command".encode())
-
 
 
 def delete_item(item_path):

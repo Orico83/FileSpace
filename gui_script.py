@@ -23,7 +23,6 @@ def disable_key(field, key):
         field, event)
 
 
-# Example function to delete a file or folder
 def delete_item(item_path):
     if os.path.isfile(item_path):
         # Delete a file
