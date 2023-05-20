@@ -2,12 +2,14 @@ import hashlib
 import os
 import shutil
 import threading
+import time
 from pickle import dumps, loads
 
 import mysql
 from file_classes import File, Directory
 
 FOLDER = "./ServerFolder"
+CHUNK_SIZE = 4096
 database_config = {
     "host": "localhost",
     "user": "root",
@@ -97,13 +99,16 @@ class ClientThread(threading.Thread):
                 self.client_socket.send(f"size: {serialized_dir.__sizeof__()}".encode())
                 self.client_socket.recv(1024)
                 self.client_socket.send(serialized_dir)
+                print(f"Sent {folder.path} to {self.username}")
             elif data.startswith("delete_item"):
                 item_path = os.path.join(FOLDER, data.split("||")[1].strip())
                 delete_item(item_path)
+                print(f"Deleted {item_path}")
             elif data.startswith("rename_item"):
                 item_path = os.path.join(FOLDER, data.split("||")[1].strip())
                 new_name = data.split("||")[-1].strip()
                 rename_item(item_path, new_name)
+                print(f"Renamed {item_path} to {new_name}")
             elif data.startswith("create_file"):
                 new_file_path = os.path.join(FOLDER, data.split("||")[1].strip())
                 if os.path.exists(new_file_path):
@@ -111,46 +116,71 @@ class ClientThread(threading.Thread):
                 # Create the new file
                 with open(new_file_path, 'w') as file:
                     pass  # Do nothing, just create an empty file
+                print(f"File {new_file_path} created")
             elif data.startswith("create_folder"):
                 new_dir_path = os.path.join(FOLDER, data.split("||")[1].strip())
                 os.makedirs(new_dir_path)
+                print(f"Folder {new_dir_path} created")
             elif data.startswith("upload_dir"):
                 self.client_socket.send("OK".encode())
                 dir_size = int(data.split("||")[1])
                 bytes_received = 0
                 dir_data = b''
+                print("Receiving folder...")
                 while bytes_received < dir_size:
-                    chunk = self.client_socket.recv(1024)
-                    bytes_received += 1024
+                    time.sleep(0.00001)
+                    chunk = self.client_socket.recv(CHUNK_SIZE)
+                    time.sleep(0.00001)
+                    bytes_received += CHUNK_SIZE
                     dir_data += chunk
                 directory = loads(dir_data)
                 location = os.path.join(FOLDER, data.split("||")[2].strip())
-                print(location)
                 directory.create(location)
+                print(f"Folder {location} uploaded")
             elif data.startswith("upload_file"):
                 self.client_socket.send("OK".encode())
                 dir_size = int(data.split("||")[1])
                 bytes_received = 0
                 file_data = b''
+                print("Receiving file...")
                 while bytes_received < dir_size:
-                    chunk = self.client_socket.recv(1024)
-                    bytes_received += 1024
+                    chunk = self.client_socket.recv(CHUNK_SIZE)
+                    bytes_received += CHUNK_SIZE
                     file_data += chunk
                 file = loads(file_data)
                 location = os.path.join(FOLDER, data.split("||")[2].strip())
                 file.create(location)
                 self.client_socket.send("OK".encode())
-            elif data.startswith("update_changes"):
-                self.client_socket.send("OK".encode())
-                dir_size = int(data.split("size:")[1])
-                bytes_received = 0
-                dir_data = b''
-                while bytes_received < dir_size:
-                    chunk = self.client_socket.recv(1024)
-                    bytes_received += 1024
-                    dir_data += chunk
-                directory = loads(dir_data)
-                directory.create(os.path.join(FOLDER, self.username))
+                print(f"File {location} uploaded")
+
+            elif data.startswith("copy"):
+                copied_item_path = os.path.join(FOLDER, data.split("||")[1])
+                destination_path = os.path.join(FOLDER, data.split("||")[2])
+                # Copy the file or folder
+                if os.path.isfile(copied_item_path):
+                    try:
+                        # Copy a file
+                        shutil.copy2(copied_item_path, destination_path)
+                        print(f"Copied file {copied_item_path} to {destination_path}")
+                    except shutil.SameFileError:
+                        pass
+                elif os.path.isdir(copied_item_path):
+                    try:
+                        # Copy a folder
+                        shutil.copytree(copied_item_path,
+                                        os.path.join(destination_path, os.path.basename(copied_item_path)))
+                        print(f"Copied folder {copied_item_path} to {destination_path}")
+                    except FileExistsError:
+                        pass
+            elif data.startswith("move"):
+                cut_item_path = os.path.join(FOLDER, data.split("||")[1])
+                destination_path = os.path.join(FOLDER, data.split("||")[2])
+                try:
+                    # Move the file or folder
+                    shutil.move(cut_item_path, destination_path)
+                    print(f"Moved {cut_item_path} to {destination_path}")
+                except shutil.Error:
+                    pass
 
             else:
                 self.client_socket.send("Invalid command".encode())

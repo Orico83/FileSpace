@@ -8,7 +8,7 @@ from login_window import UiLogin
 from signup_window import UiSignup
 from PyQt5.QtWidgets import QApplication, QMainWindow, QLineEdit, QWidget, QFileSystemModel, QInputDialog, QMessageBox
 from PyQt5 import QtCore, QtGui, QtWidgets
-from PyQt5.QtCore import Qt
+from PyQt5.QtCore import Qt, QFileSystemWatcher
 import sys
 from file_classes import File, Directory
 from main_window import Ui_MainWindow
@@ -16,6 +16,7 @@ from main_window import Ui_MainWindow
 SERVER_IP = '127.0.0.1'
 PORT = 8080
 FOLDER = r"C:\Users\orico\Desktop\FS"
+CHUNK_SIZE = 4096
 
 
 def disable_key(field, key):
@@ -85,13 +86,33 @@ class MainWindow(QWidget, Ui_MainWindow):
         self.list_view.customContextMenuRequested.connect(self.create_context_menu)
         self.go_back_button.hide()
         self.go_back_button.clicked.connect(self.go_back)
-        self.update_changes_button.clicked.connect(self.update_changes)
 
-    def update_changes(self):
-        directory = dumps(Directory(self.dir_path))
-        client_socket.send(f"update_changes size: {directory.__sizeof__()}".encode())
-        client_socket.recv(1024)
-        client_socket.send(directory)
+        self.watcher = QFileSystemWatcher()
+        self.watcher.addPath(self.dir_path)
+        self.file_timestamps = {}
+        self.recursively_add_paths(self.dir_path)  # Add subdirectories recursively
+        self.watcher.fileChanged.connect(self.file_changed)
+
+    def recursively_add_paths(self, folder_path):
+        for root, dirs, files in os.walk(folder_path):
+            for file in files:
+                path = os.path.join(root, file)
+                self.watcher.addPath(path)
+                self.file_timestamps[path] = os.path.getmtime(path)
+
+    def file_changed(self, path):
+        if not os.path.exists(path):
+            # File doesn't exist anymore, skip processing
+            return
+
+        current_timestamp = os.path.getmtime(path)
+        previous_timestamp = self.file_timestamps.get(path, None)
+
+        if previous_timestamp and current_timestamp != previous_timestamp:
+            print("File edited:", path)
+            # Add your logic here to handle file edits
+
+        self.file_timestamps[path] = current_timestamp
 
     def on_list_view_double_clicked(self, index):
         # Check if the selected index represents a directory
@@ -205,29 +226,32 @@ class MainWindow(QWidget, Ui_MainWindow):
     def paste_item(self):
         destination_path = self.model.rootPath()
         if self.copied_item_path:
+            ok = True
             # Copy the file or folder
             if os.path.isfile(self.copied_item_path):
                 try:
                     # Copy a file
                     shutil.copy2(self.copied_item_path, destination_path)
-                    self.update_changes()
                 except shutil.SameFileError:
-                    pass
+                    ok = False
             elif os.path.isdir(self.copied_item_path):
                 try:
                     # Copy a folder
                     shutil.copytree(self.copied_item_path,
                                     os.path.join(destination_path, os.path.basename(self.copied_item_path)))
-                    self.update_changes()
                 except FileExistsError:
-                    pass
+                    ok = False
+            if ok:
+                client_socket.send(f"copy ||{os.path.relpath(self.copied_item_path, FOLDER)}||"
+                                   f"{os.path.relpath(destination_path, FOLDER)}".encode())
         elif self.cut_item_path:
             try:
                 # Move the file or folder
                 shutil.move(self.cut_item_path, destination_path)
+                client_socket.send(f"move ||{os.path.relpath(self.cut_item_path, FOLDER)}||"
+                                   f"{os.path.relpath(destination_path, FOLDER)}".encode())
                 self.copied_item_path = os.path.join(destination_path, os.path.basename(self.cut_item_path))
                 self.cut_item_path = None
-                self.update_changes()
             except shutil.Error:
                 pass
         # Refresh the file system view
@@ -385,8 +409,8 @@ class LoginWindow(QMainWindow, UiLogin):
             bytes_received = 0
             dir_data = b''
             while bytes_received < dir_size:
-                chunk = client_socket.recv(1024)
-                bytes_received += 1024
+                chunk = client_socket.recv(CHUNK_SIZE)
+                bytes_received += CHUNK_SIZE
                 dir_data += chunk
             folder = loads(dir_data)
             f = folder.create(os.path.join(FOLDER, folder.name))
