@@ -4,6 +4,7 @@ import shutil
 import socket
 from pickle import loads, dumps
 
+from cryptography.fernet import Fernet
 from login_window import UiLogin
 from signup_window import UiSignup
 from PyQt5.QtWidgets import QApplication, QMainWindow, QLineEdit, QWidget, QFileSystemModel, QInputDialog, QMessageBox
@@ -17,6 +18,9 @@ SERVER_IP = '127.0.0.1'
 PORT = 8080
 FOLDER = r"C:\Users\orico\Desktop\FS"
 CHUNK_SIZE = 4096
+KEY = b'60MYIZvk0DXCJJWEDVf3oFD4zriwOvDrYkJGgQETf5c='
+
+fernet = Fernet(KEY)
 
 
 def disable_key(field, key):
@@ -68,6 +72,7 @@ class MainWindow(QWidget, Ui_MainWindow):
         self.cut_item_path = None
         self.dir_path = dir_path
         self.directory_history = []  # List to store directory history
+        self.friends = []
         self.setupUi(self)
         self.model = QFileSystemModel()
         self.model.setRootPath(dir_path)
@@ -77,7 +82,7 @@ class MainWindow(QWidget, Ui_MainWindow):
         self.list_view.setGridSize(QtCore.QSize(96, 96))
         self.list_view.setViewMode(QtWidgets.QListView.IconMode)
         self.set_initial_directory()
-
+        self.tabs.setCurrentIndex(0)
         self.list_view.doubleClicked.connect(self.on_list_view_double_clicked)
         self.upload_files_button.clicked.connect(self.upload_files)  # Connect the upload button to the method
         self.upload_folders_button.clicked.connect(self.upload_folders)
@@ -92,6 +97,32 @@ class MainWindow(QWidget, Ui_MainWindow):
         self.file_timestamps = {}
         self.recursively_add_paths(self.dir_path)  # Add subdirectories recursively
         self.watcher.fileChanged.connect(self.file_changed)
+        self.show_friends(self.friends)
+        self.friends_list_widget.itemDoubleClicked.connect(self.friend_double_clicked)
+
+        self.friend_requests_list_widget.itemDoubleClicked.connect(self.friend_request_double_clicked)
+
+        self.search_bar.textChanged.connect(self.search_friends)
+
+    def show_friends(self, friends):
+        for friend in friends:
+            self.friends_list_widget.addItem(friend)
+
+    def friend_double_clicked(self, item):
+        # Handle double click on a friend item
+        friend_username = item.text()
+        # Implement the desired functionality, such as opening a chat window with the friend
+
+    def friend_request_double_clicked(self, item):
+        # Handle double click on a friend request item
+        friend_request_info = item.text()
+        # Implement the desired functionality, such as accepting or declining the friend request
+
+    def search_friends(self, search_text):
+        # Handle search functionality
+        # Update the friends list based on the search text entered by the user
+        # Display the matching results in the friends list widget
+        pass
 
     def recursively_add_paths(self, folder_path):
         for root, dirs, files in os.walk(folder_path):
@@ -106,11 +137,17 @@ class MainWindow(QWidget, Ui_MainWindow):
             return
 
         current_timestamp = os.path.getmtime(path)
-        previous_timestamp = self.file_timestamps.get(path, None)
-
+        previous_timestamp = self.file_timestamps.get(path)
+        os.path.getmtime(path)
         if previous_timestamp and current_timestamp != previous_timestamp:
             print("File edited:", path)
-            # Add your logic here to handle file edits
+            file_data = File(path).data
+            file_size = File(path).size
+            # Send the file path and its data over the socket
+            client_socket.send(fernet.encrypt(f"file_edit ||{os.path.relpath(path, FOLDER)}||{file_size}".encode()))
+            client_socket.recv(1024)  # Wait for the server's acknowledgement
+            client_socket.send(fernet.encrypt(file_data))
+            client_socket.recv(1024)  # Wait for the server's acknowledgement
 
         self.file_timestamps[path] = current_timestamp
 
@@ -242,14 +279,14 @@ class MainWindow(QWidget, Ui_MainWindow):
                 except FileExistsError:
                     ok = False
             if ok:
-                client_socket.send(f"copy ||{os.path.relpath(self.copied_item_path, FOLDER)}||"
-                                   f"{os.path.relpath(destination_path, FOLDER)}".encode())
+                client_socket.send(fernet.encrypt(f"copy ||{os.path.relpath(self.copied_item_path, FOLDER)}||"
+                                                  f"{os.path.relpath(destination_path, FOLDER)}".encode()))
         elif self.cut_item_path:
             try:
                 # Move the file or folder
                 shutil.move(self.cut_item_path, destination_path)
-                client_socket.send(f"move ||{os.path.relpath(self.cut_item_path, FOLDER)}||"
-                                   f"{os.path.relpath(destination_path, FOLDER)}".encode())
+                client_socket.send(fernet.encrypt(f"move ||{os.path.relpath(self.cut_item_path, FOLDER)}||"
+                                                  f"{os.path.relpath(destination_path, FOLDER)}".encode()))
                 self.copied_item_path = os.path.join(destination_path, os.path.basename(self.cut_item_path))
                 self.cut_item_path = None
             except shutil.Error:
@@ -264,7 +301,7 @@ class MainWindow(QWidget, Ui_MainWindow):
         self.model.setRootPath(self.model.rootPath())
         relative_path = os.path.relpath(item_path, FOLDER)
 
-        client_socket.send(f"delete_item || {relative_path}".encode())
+        client_socket.send(fernet.encrypt(f"delete_item || {relative_path}".encode()))
 
     def rename_selected_item(self, item_path):
         # Open a dialog to get the new name
@@ -277,7 +314,7 @@ class MainWindow(QWidget, Ui_MainWindow):
             # Refresh the file system view
             self.model.setRootPath(self.model.rootPath())
             relative_path = os.path.relpath(item_path, FOLDER)
-            client_socket.send(f"rename_item || {relative_path} || {new_name}".encode())
+            client_socket.send(fernet.encrypt(f"rename_item || {relative_path} || {new_name}".encode()))
 
     def create_new_file(self):
         # Open a dialog to get the new file name
@@ -302,7 +339,7 @@ class MainWindow(QWidget, Ui_MainWindow):
             # Refresh the file system view
             self.model.setRootPath(self.model.rootPath())
             relative_path = os.path.relpath(new_file_path, FOLDER)
-            client_socket.send(f"create_file || {relative_path}".encode())
+            client_socket.send(fernet.encrypt(f"create_file || {relative_path}".encode()))
 
     def create_new_directory(self):
         # Open a dialog to get the new directory name
@@ -326,7 +363,7 @@ class MainWindow(QWidget, Ui_MainWindow):
             # Refresh the file system view
             self.model.setRootPath(self.model.rootPath())
             relative_path = os.path.relpath(new_dir_path, FOLDER)
-            client_socket.send(f"create_folder || {relative_path}".encode())
+            client_socket.send(fernet.encrypt(f"create_folder || {relative_path}".encode()))
 
     def upload_folders(self):
         directory = QtWidgets.QFileDialog.getExistingDirectory(self, "Select Folder to Upload", QtCore.QDir.homePath())
@@ -340,11 +377,12 @@ class MainWindow(QWidget, Ui_MainWindow):
             # Refresh the file system view
             self.model.setRootPath(self.model.rootPath())
             serialized_dir = dumps(new_dir)
+            encrypted_dir = fernet.encrypt(serialized_dir)
             c = os.path.relpath(new_dir.path, FOLDER)
-            client_socket.send(
-                f"upload_dir || {serialized_dir.__sizeof__()} || {os.path.relpath(new_dir.path, FOLDER)}".encode())
+            client_socket.send(fernet.encrypt(
+                f"upload_dir || {len(encrypted_dir)} || {os.path.relpath(new_dir.path, FOLDER)}".encode()))
             client_socket.recv(1024)
-            client_socket.send(serialized_dir)
+            client_socket.send(encrypted_dir)
 
     def upload_files(self):
         file_dialog = QtWidgets.QFileDialog(self, "Select File to Upload")
@@ -363,10 +401,11 @@ class MainWindow(QWidget, Ui_MainWindow):
                                                 file.name)
                 shutil.copyfile(file.path, destination_path)
                 serialized_file = dumps(file)
-                client_socket.send(
-                    f"upload_file || {serialized_file.__sizeof__()} || {os.path.relpath(destination_path, FOLDER)}".encode())
+                encrypted_file = fernet.encrypt(serialized_file)
+                client_socket.send(fernet.encrypt(f"upload_file || {len(encrypted_file)} ||"
+                                                  f" {os.path.relpath(destination_path, FOLDER)}".encode()))
                 client_socket.recv(1024)
-                client_socket.send(serialized_file)
+                client_socket.send(encrypted_file)
                 client_socket.recv(1024)
 
             # Refresh the file system view
@@ -394,24 +433,28 @@ class LoginWindow(QMainWindow, UiLogin):
         print(f"Username: {username}")
         print(f"Password: {password}")
         # Send the username and password to the server for signup
-        client_socket.send(f"login {username} {hashlib.md5(password.encode()).hexdigest()}".encode())
+        client_socket.send(fernet.encrypt(f"login {username} {hashlib.md5(password.encode()).hexdigest()}".encode()))
         # Receive the server's response
-        response = client_socket.recv(1024).decode().strip()
+        response = fernet.decrypt(client_socket.recv(1024)).decode().strip()
 
         # Check the server's response and show an appropriate message
         if response == "OK":
             # Welcome message
             print(f"Login Successful - Welcome, {username}!")
-            client_socket.send("download_folder".encode())
-            data = client_socket.recv(1024).decode()
-            dir_size = int(data.split(":")[1])
-            client_socket.send("OK".encode())
+            client_socket.send(fernet.encrypt("download_folder".encode()))
+            data = fernet.decrypt(client_socket.recv(1024)).decode()
+            data_len = int(data.split(":")[1])
+            client_socket.send(fernet.encrypt("OK".encode()))
+            # Receive the directory data
             bytes_received = 0
-            dir_data = b''
-            while bytes_received < dir_size:
+            encrypted_dir_data = b''
+            while bytes_received < data_len:
                 chunk = client_socket.recv(CHUNK_SIZE)
-                bytes_received += CHUNK_SIZE
-                dir_data += chunk
+                bytes_received += len(chunk)
+                encrypted_dir_data += chunk
+
+            # Decrypt the directory data
+            dir_data = fernet.decrypt(encrypted_dir_data)
             folder = loads(dir_data)
             f = folder.create(os.path.join(FOLDER, folder.name))
             self.goto_files(f.path)
@@ -459,9 +502,9 @@ class SignupWindow(QMainWindow, UiSignup):
         print("Username:", username)
         print("Password:", password)
         # Create a new socket and connect to the server
-        client_socket.send(f"signup {username} {hashlib.md5(password.encode()).hexdigest()}".encode())
+        client_socket.send(fernet.encrypt(f"signup {username} {hashlib.md5(password.encode()).hexdigest()}".encode()))
         # Receive the server's response
-        response = client_socket.recv(1024).decode().strip()
+        response = fernet.decrypt(client_socket.recv(1024)).decode().strip()
 
         # Check the server's response and show an appropriate message
         if response == "OK":
