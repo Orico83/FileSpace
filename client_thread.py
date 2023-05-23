@@ -19,6 +19,7 @@ database_config = {
     "password": "OC8305",
     "database": "test"
 }
+username_locks = {}
 
 
 class ClientThread(threading.Thread):
@@ -28,6 +29,9 @@ class ClientThread(threading.Thread):
         self.client_socket = client_socket
         self.client_address = client_address
         self.folder_path = None
+        self.friends = []
+        self.friend_requests = []
+        self.lock = None  # Lock for the username
 
     def run(self):
         try:
@@ -46,12 +50,15 @@ class ClientThread(threading.Thread):
                 self.username = data.split()[1]
                 password = data.split()[2]
                 print(f"Username: {self.username} | Password: {password}")
+
                 mysql_cursor.execute("SELECT * FROM users WHERE username = %s AND password = %s",
                                      (self.username, password))
                 result = mysql_cursor.fetchone()
                 if result:
                     self.client_socket.send(fernet.encrypt("OK".encode()))
                     self.folder_path = os.path.join(FOLDER, self.username)
+                    self.friends = [] if result[3] is None else result[3].split(',')
+                    self.friend_requests = [] if result[4] is None else result[4].split(',')
                     self.handle_commands()  # Call a method to handle subsequent commands
 
                 else:
@@ -84,6 +91,8 @@ class ClientThread(threading.Thread):
             print(err)
 
     def handle_commands(self):
+        # Set the lock for the username
+        self.lock = username_locks.setdefault(self.username, threading.Lock())
         while True:
             # Receive the command from the client
             data = fernet.decrypt(self.client_socket.recv(1024)).decode()
@@ -91,7 +100,6 @@ class ClientThread(threading.Thread):
             if not data:
                 break  # Exit the loop if no more data is received
 
-            # Add code to handle different commands here
             if data.startswith("download_folder"):
                 try:
                     folder = Directory(self.folder_path)
@@ -105,26 +113,31 @@ class ClientThread(threading.Thread):
                 self.client_socket.recv(1024)
                 self.client_socket.send(encrypted_dir)
                 print(f"Sent {folder.path} to {self.username}")
+            elif data.startswith("initiate_friends"):
+                self.client_socket.send(fernet.encrypt(dumps(self.friends)))
             elif data.startswith("delete_item"):
                 item_path = os.path.join(FOLDER, data.split("||")[1].strip())
-                delete_item(item_path)
+                with self.lock:
+                    delete_item(item_path)
                 print(f"Deleted {item_path}")
             elif data.startswith("rename_item"):
                 item_path = os.path.join(FOLDER, data.split("||")[1].strip())
                 new_name = data.split("||")[-1].strip()
-                rename_item(item_path, new_name)
+                with self.lock:
+                    rename_item(item_path, new_name)
                 print(f"Renamed {item_path} to {new_name}")
             elif data.startswith("create_file"):
                 new_file_path = os.path.join(FOLDER, data.split("||")[1].strip())
                 if os.path.exists(new_file_path):
                     return
-                # Create the new file
-                with open(new_file_path, 'w'):
-                    pass  # Do nothing, just create an empty file
+                with self.lock:
+                    # Create the new file
+                    with open(new_file_path, 'w'):
+                        pass  # Do nothing, just create an empty file
                 print(f"File {new_file_path} created")
             elif data.startswith("create_folder"):
                 new_dir_path = os.path.join(FOLDER, data.split("||")[1].strip())
-                os.makedirs(new_dir_path)
+                os.makedirs(new_dir_path, exist_ok=True)
                 print(f"Folder {new_dir_path} created")
             elif data.startswith("upload_dir"):
                 self.client_socket.send(fernet.encrypt("OK".encode()))
@@ -141,7 +154,8 @@ class ClientThread(threading.Thread):
                 dir_data = fernet.decrypt(encrypted_dir_data)
                 directory = loads(dir_data)
                 location = os.path.join(FOLDER, data.split("||")[2].strip())
-                directory.create(location)
+                with self.lock:
+                    directory.create(location)
                 print(f"Folder {location} uploaded")
             elif data.startswith("upload_file"):
                 self.client_socket.send(fernet.encrypt("OK".encode()))
@@ -156,52 +170,57 @@ class ClientThread(threading.Thread):
                 file_data = fernet.decrypt(encrypted_file_data)
                 file = loads(file_data)
                 file_path = os.path.join(FOLDER, data.split("||")[2].strip())
-                file.create(file_path)
+                with self.lock:
+                    file.create(file_path)
                 self.client_socket.send(fernet.encrypt("OK".encode()))
                 print(f"File {file_path} uploaded")
 
             elif data.startswith("copy"):
                 copied_item_path = os.path.join(FOLDER, data.split("||")[1])
                 destination_path = os.path.join(FOLDER, data.split("||")[2])
-                # Copy the file or folder
-                if os.path.isfile(copied_item_path):
-                    try:
-                        # Copy a file
-                        shutil.copy2(copied_item_path, destination_path)
-                        print(f"Copied file {copied_item_path} to {destination_path}")
-                    except shutil.SameFileError:
-                        pass
-                elif os.path.isdir(copied_item_path):
-                    try:
-                        # Copy a folder
-                        shutil.copytree(copied_item_path,
-                                        os.path.join(destination_path, os.path.basename(copied_item_path)))
-                        print(f"Copied folder {copied_item_path} to {destination_path}")
-                    except FileExistsError:
-                        pass
+                with self.lock:
+                    # Copy the file or folder
+                    if os.path.isfile(copied_item_path):
+                        try:
+                            # Copy a file
+                            shutil.copy2(copied_item_path, destination_path)
+                            print(f"Copied file {copied_item_path} to {destination_path}")
+                        except shutil.SameFileError:
+                            pass
+                    elif os.path.isdir(copied_item_path):
+                        try:
+                            # Copy a folder
+                            shutil.copytree(copied_item_path,
+                                            os.path.join(destination_path, os.path.basename(copied_item_path)))
+                            print(f"Copied folder {copied_item_path} to {destination_path}")
+                        except FileExistsError:
+                            pass
             elif data.startswith("move"):
                 cut_item_path = os.path.join(FOLDER, data.split("||")[1])
                 destination_path = os.path.join(FOLDER, data.split("||")[2])
-                try:
-                    # Move the file or folder
-                    shutil.move(cut_item_path, destination_path)
-                    print(f"Moved {cut_item_path} to {destination_path}")
-                except shutil.Error:
-                    pass
+                with self.lock:
+                    try:
+                        # Move the file or folder
+                        shutil.move(cut_item_path, destination_path)
+                        print(f"Moved {cut_item_path} to {destination_path}")
+                    except shutil.Error:
+                        pass
             elif data.startswith("file_edit"):
                 file_path = os.path.join(FOLDER, data.split("||")[1])
                 self.client_socket.send(fernet.encrypt("OK".encode()))
                 data_len = int(data.split("||")[-1])
                 bytes_received = 0
-                encrypted_file_data = b
+                encrypted_file_data = b''
                 print(f"Updating file {file_path}")
                 while bytes_received < data_len:
                     chunk = self.client_socket.recv(CHUNK_SIZE)
                     bytes_received += CHUNK_SIZE
                     encrypted_file_data += chunk
                 file_data = fernet.decrypt(encrypted_file_data)
-                with open(file_path, "wb") as f:
-                    f.write(file_data)
+                # Acquire the lock before opening the file and writing to it
+                with self.lock:
+                    with open(file_path, "wb") as f:
+                        f.write(file_data)
                 self.client_socket.send(fernet.encrypt("OK".encode()))
 
             else:

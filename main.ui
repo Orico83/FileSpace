@@ -19,6 +19,15 @@
      <property name="enabled">
       <bool>true</bool>
      </property>
+     <property name="sizePolicy">
+      <sizepolicy hsizetype="MinimumExpanding" vsizetype="MinimumExpanding">
+       <horstretch>0</horstretch>
+       <verstretch>0</verstretch>
+      </sizepolicy>
+     </property>
+     <property name="contextMenuPolicy">
+      <enum>Qt::DefaultContextMenu</enum>
+     </property>
      <property name="currentIndex">
       <number>1</number>
      </property>
@@ -152,7 +161,7 @@
          <x>10</x>
          <y>30</y>
          <width>256</width>
-         <height>500</height>
+         <height>511</height>
         </rect>
        </property>
       </widget>
@@ -177,10 +186,10 @@
       <widget class="QListWidget" name="friend_requests_list_widget">
        <property name="geometry">
         <rect>
-         <x>290</x>
+         <x>280</x>
          <y>30</y>
          <width>256</width>
-         <height>500</height>
+         <height>511</height>
         </rect>
        </property>
       </widget>
@@ -205,17 +214,22 @@
       <widget class="QListWidget" name="search_results_list">
        <property name="geometry">
         <rect>
-         <x>570</x>
-         <y>59</y>
+         <x>550</x>
+         <y>30</y>
          <width>256</width>
-         <height>471</height>
+         <height>511</height>
         </rect>
+       </property>
+       <property name="font">
+        <font>
+         <pointsize>14</pointsize>
+        </font>
        </property>
       </widget>
       <widget class="QLabel" name="search_users_label">
        <property name="geometry">
         <rect>
-         <x>570</x>
+         <x>550</x>
          <y>3</y>
          <width>91</width>
          <height>21</height>
@@ -233,27 +247,14 @@
       <widget class="QLineEdit" name="search_bar">
        <property name="geometry">
         <rect>
-         <x>660</x>
+         <x>640</x>
          <y>5</y>
-         <width>151</width>
+         <width>161</width>
          <height>20</height>
         </rect>
        </property>
        <property name="text">
         <string/>
-       </property>
-      </widget>
-      <widget class="QPushButton" name="search_users_button">
-       <property name="geometry">
-        <rect>
-         <x>700</x>
-         <y>30</y>
-         <width>75</width>
-         <height>23</height>
-        </rect>
-       </property>
-       <property name="text">
-        <string>Search</string>
        </property>
       </widget>
      </widget>

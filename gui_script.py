@@ -19,12 +19,14 @@ PORT = 8080
 FOLDER = r"C:\Users\orico\Desktop\FS"
 CHUNK_SIZE = 4096
 KEY = b'60MYIZvk0DXCJJWEDVf3oFD4zriwOvDrYkJGgQETf5c='
-
+KEYS_TO_DISABLE = [Qt.Key_Space, Qt.Key_Period, Qt.Key_Slash, Qt.Key_Comma, Qt.Key_Semicolon, Qt.Key_Colon, Qt.Key_Bar,
+                   Qt.Key_Backslash, Qt.Key_BracketLeft, Qt.Key_BracketRight, Qt.Key_ParenLeft, Qt.Key_ParenRight,
+                   Qt.Key_BraceLeft, Qt.Key_BraceRight, Qt.Key_Apostrophe, Qt.Key_QuoteDbl]
 fernet = Fernet(KEY)
 
 
-def disable_key(field, key):
-    field.keyPressEvent = lambda event: event.ignore() if event.key() == key else QLineEdit.keyPressEvent(
+def disable_keys(field):
+    field.keyPressEvent = lambda event: event.ignore() if event.key() in KEYS_TO_DISABLE else QLineEdit.keyPressEvent(
         field, event)
 
 
@@ -46,7 +48,7 @@ def rename_item(item_path, new_name):
         QMessageBox.warning(widget, "Error", err.args[1])
 
 
-def create_fail_label(parent, text, geometry):
+"""def create_fail_label(parent, text, geometry):
     fail_label = QtWidgets.QLabel(parent)
     fail_label.setGeometry(QtCore.QRect(geometry[0], geometry[1], geometry[2], geometry[3]))
     fail_label.setText(text)
@@ -55,7 +57,7 @@ def create_fail_label(parent, text, geometry):
     font.setPointSize(11)
     fail_label.setFont(font)
     fail_label.setStyleSheet("color: rgb(255, 0, 0)")
-    return fail_label
+    return fail_label"""
 
 
 def open_file(item_path):
@@ -72,7 +74,9 @@ class MainWindow(QWidget, Ui_MainWindow):
         self.cut_item_path = None
         self.dir_path = dir_path
         self.directory_history = []  # List to store directory history
-        self.friends = []
+        self.users = ["1", "12", "231", "41", "21", "91", "122", "2331", "31", "21111", "321", "32112", "41112", "431", "2221", "921", "1222", "23321", "3144", "211", "3221", "32122", "4123"]
+        self.friends = ["1", "12", "23"]
+        self.friend_request = []
         self.setupUi(self)
         self.model = QFileSystemModel()
         self.model.setRootPath(dir_path)
@@ -97,15 +101,17 @@ class MainWindow(QWidget, Ui_MainWindow):
         self.file_timestamps = {}
         self.recursively_add_paths(self.dir_path)  # Add subdirectories recursively
         self.watcher.fileChanged.connect(self.file_changed)
-        self.show_friends(self.friends)
+        #self.initiate_friends()
         self.friends_list_widget.itemDoubleClicked.connect(self.friend_double_clicked)
 
         self.friend_requests_list_widget.itemDoubleClicked.connect(self.friend_request_double_clicked)
 
-        self.search_bar.textChanged.connect(self.search_friends)
+        self.search_bar.textChanged.connect(self.search_users)
 
-    def show_friends(self, friends):
-        for friend in friends:
+    def initiate_friends(self):
+        client_socket.send(fernet.encrypt("initiate_friends".encode()))
+        self.friends = loads(fernet.decrypt(client_socket.recv(1024)))
+        for friend in self.friends:
             self.friends_list_widget.addItem(friend)
 
     def friend_double_clicked(self, item):
@@ -118,11 +124,17 @@ class MainWindow(QWidget, Ui_MainWindow):
         friend_request_info = item.text()
         # Implement the desired functionality, such as accepting or declining the friend request
 
-    def search_friends(self, search_text):
-        # Handle search functionality
-        # Update the friends list based on the search text entered by the user
-        # Display the matching results in the friends list widget
-        pass
+    def search_users(self, search_text):
+        if not search_text:
+            # Clear the current contents of the search results list widget
+            self.search_results_list.clear()
+        else:
+            self.search_results_list.clear()
+            # Filter the users list based on the search text
+            filtered_users = [user for user in self.users if search_text.lower() in user.lower()]
+
+            # Display the matching results in the search results list widget
+            self.search_results_list.addItems(filtered_users)
 
     def recursively_add_paths(self, folder_path):
         for root, dirs, files in os.walk(folder_path):
@@ -418,8 +430,8 @@ class LoginWindow(QMainWindow, UiLogin):
         self.setupUi(self)
         self.login_fail_label.hide()
 
-        disable_key(self.username_input, Qt.Key_Space)
-        disable_key(self.password_input, Qt.Key_Space)
+        disable_keys(self.username_input)
+        disable_keys(self.password_input)
         self.login_button.clicked.connect(self.login)
 
         self.signup_button.clicked.connect(self.goto_signup_screen)
@@ -482,9 +494,9 @@ class SignupWindow(QMainWindow, UiSignup):
         self.confirm_fail_label.hide()
         self.signup_fail_label.hide()
 
-        disable_key(self.username_input, Qt.Key_Space)
-        disable_key(self.password_input, Qt.Key_Space)
-        disable_key(self.confirm_password_input, Qt.Key_Space)
+        disable_keys(self.username_input)
+        disable_keys(self.password_input)
+        disable_keys(self.confirm_password_input)
 
         self.create_account_button.clicked.connect(self.signup)
         self.back_button.clicked.connect(self.go_back)
