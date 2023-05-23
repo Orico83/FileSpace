@@ -25,6 +25,7 @@ username_locks = {}
 class ClientThread(threading.Thread):
     def __init__(self, client_socket, client_address):
         super().__init__()
+        self.mysql_connection = None
         self.username = None
         self.client_socket = client_socket
         self.client_address = client_address
@@ -59,7 +60,7 @@ class ClientThread(threading.Thread):
                     self.folder_path = os.path.join(FOLDER, self.username)
                     self.friends = [] if result[3] is None else result[3].split(',')
                     self.friend_requests = [] if result[4] is None else result[4].split(',')
-                    self.handle_commands()  # Call a method to handle subsequent commands
+                    self.handle_commands(mysql_connection, mysql_cursor)  # Call a method to handle subsequent commands
 
                 else:
                     self.client_socket.send(fernet.encrypt("FAIL".encode()))
@@ -80,7 +81,7 @@ class ClientThread(threading.Thread):
                     self.folder_path = os.path.join(FOLDER, self.username)
                     os.makedirs(self.folder_path)
                     self.client_socket.send(fernet.encrypt("OK".encode()))
-                    self.handle_commands()  # Call a method to handle subsequent commands
+                    self.handle_commands(mysql_connection, mysql_cursor)  # Call a method to handle subsequent commands
 
             # Close the MySQL connection and client socket
             mysql_cursor.close()
@@ -90,7 +91,7 @@ class ClientThread(threading.Thread):
         except Exception as err:
             print(err)
 
-    def handle_commands(self):
+    def handle_commands(self, mysql_connection, mysql_cursor):
         # Set the lock for the username
         self.lock = username_locks.setdefault(self.username, threading.Lock())
         while True:
@@ -222,6 +223,24 @@ class ClientThread(threading.Thread):
                     with open(file_path, "wb") as f:
                         f.write(file_data)
                 self.client_socket.send(fernet.encrypt("OK".encode()))
+            elif data.startswith("refresh_users"):
+                try:
+                    # Execute the query to fetch the updated user list
+                    mysql_cursor.execute("SELECT username FROM users")
+
+                    # Fetch all the usernames from the result
+                    rows = mysql_cursor.fetchall()
+                    updated_users = ','.join([row[0] for row in rows])
+                    self.client_socket.send(fernet.encrypt(updated_users.encode()))
+                except Exception as error:
+                    print(error)
+                    self.client_socket.send(fernet.encrypt("Error refreshing users".encode()))
+            elif data.startswith("add_friend"):
+                new_friend = data.split()[1]
+                self.friends.append(new_friend)
+                friends = ','.join(self.friends)
+                mysql_cursor.execute("UPDATE users SET friends = %s WHERE username = %s", (friends, self.username))
+                self.client_socket.send("ok".encode())
 
             else:
                 self.client_socket.send(fernet.encrypt("Invalid command".encode()))

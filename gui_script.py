@@ -7,7 +7,8 @@ from pickle import loads, dumps
 from cryptography.fernet import Fernet
 from login_window import UiLogin
 from signup_window import UiSignup
-from PyQt5.QtWidgets import QApplication, QMainWindow, QLineEdit, QWidget, QFileSystemModel, QInputDialog, QMessageBox
+from PyQt5.QtWidgets import QApplication, QMainWindow, QLineEdit, QWidget, QFileSystemModel, QInputDialog, QMessageBox, \
+    QDialogButtonBox, QDialog, QLabel
 from PyQt5 import QtCore, QtGui, QtWidgets
 from PyQt5.QtCore import Qt, QFileSystemWatcher
 import sys
@@ -16,7 +17,7 @@ from main_window import Ui_MainWindow
 
 SERVER_IP = '127.0.0.1'
 PORT = 8080
-FOLDER = r"C:\Users\orico\Desktop\FS"
+FOLDER = r"C:\Users\cyber\Desktop\FS"
 CHUNK_SIZE = 4096
 KEY = b'60MYIZvk0DXCJJWEDVf3oFD4zriwOvDrYkJGgQETf5c='
 KEYS_TO_DISABLE = [Qt.Key_Space, Qt.Key_Period, Qt.Key_Slash, Qt.Key_Comma, Qt.Key_Semicolon, Qt.Key_Colon, Qt.Key_Bar,
@@ -74,7 +75,7 @@ class MainWindow(QWidget, Ui_MainWindow):
         self.cut_item_path = None
         self.dir_path = dir_path
         self.directory_history = []  # List to store directory history
-        self.users = ["1", "12", "231", "41", "21", "91", "122", "2331", "31", "21111", "321", "32112", "41112", "431", "2221", "921", "1222", "23321", "3144", "211", "3221", "32122", "4123"]
+        self.users = []
         self.friends = ["1", "12", "23"]
         self.friend_request = []
         self.setupUi(self)
@@ -87,6 +88,7 @@ class MainWindow(QWidget, Ui_MainWindow):
         self.list_view.setViewMode(QtWidgets.QListView.IconMode)
         self.set_initial_directory()
         self.tabs.setCurrentIndex(0)
+        self.refresh_users()
         self.list_view.doubleClicked.connect(self.on_list_view_double_clicked)
         self.upload_files_button.clicked.connect(self.upload_files)  # Connect the upload button to the method
         self.upload_folders_button.clicked.connect(self.upload_folders)
@@ -101,12 +103,43 @@ class MainWindow(QWidget, Ui_MainWindow):
         self.file_timestamps = {}
         self.recursively_add_paths(self.dir_path)  # Add subdirectories recursively
         self.watcher.fileChanged.connect(self.file_changed)
-        #self.initiate_friends()
+        # self.initiate_friends()
         self.friends_list_widget.itemDoubleClicked.connect(self.friend_double_clicked)
 
         self.friend_requests_list_widget.itemDoubleClicked.connect(self.friend_request_double_clicked)
 
         self.search_bar.textChanged.connect(self.search_users)
+        self.refresh_users_button.clicked.connect(self.refresh_users)
+        self.search_results_list.itemDoubleClicked.connect(self.add_friend_win)
+
+    def add_friend_win(self, item):
+        user = item.text()
+        dialog = QDialog()
+        dialog.setWindowTitle("Add Friend")
+        layout = QtWidgets.QVBoxLayout()
+        label = QLabel(f"add {user} as friend?")
+        layout.addWidget(label)
+        popup = QDialogButtonBox(QDialogButtonBox.Yes | QDialogButtonBox.No)
+        popup.accepted.connect(dialog.accept)
+        popup.rejected.connect(dialog.reject)
+        layout.addWidget(popup)
+        dialog.setLayout(layout)
+        result = dialog.exec_()
+        if result == QDialog.Accepted:
+            self.add_friend(user)
+
+    def add_friend(self, user):
+        self.friends.append(user)
+        client_socket.send(fernet.encrypt(f"add_friend {user}".encode()))
+        client_socket.recv(1024)
+        print(f"added {user}")
+
+
+    def refresh_users(self):
+        client_socket.send(fernet.encrypt("refresh_users".encode()))
+        users = fernet.decrypt(client_socket.recv(1024)).decode()
+        self.users = users.split(',')
+        self.users.remove(os.path.basename(self.dir_path))
 
     def initiate_friends(self):
         client_socket.send(fernet.encrypt("initiate_friends".encode()))

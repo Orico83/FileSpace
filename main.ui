@@ -74,32 +74,6 @@
         <string>Upload Folders</string>
        </property>
       </widget>
-      <widget class="QPushButton" name="create_folder_button">
-       <property name="geometry">
-        <rect>
-         <x>730</x>
-         <y>200</y>
-         <width>81</width>
-         <height>23</height>
-        </rect>
-       </property>
-       <property name="text">
-        <string>Create Folder</string>
-       </property>
-      </widget>
-      <widget class="QPushButton" name="create_file_button">
-       <property name="geometry">
-        <rect>
-         <x>730</x>
-         <y>160</y>
-         <width>81</width>
-         <height>23</height>
-        </rect>
-       </property>
-       <property name="text">
-        <string>Create File</string>
-       </property>
-      </widget>
       <widget class="QPushButton" name="go_back_button">
        <property name="geometry">
         <rect>
@@ -215,9 +189,9 @@
        <property name="geometry">
         <rect>
          <x>550</x>
-         <y>30</y>
+         <y>60</y>
          <width>256</width>
-         <height>511</height>
+         <height>481</height>
         </rect>
        </property>
        <property name="font">
@@ -255,6 +229,22 @@
        </property>
        <property name="text">
         <string/>
+       </property>
+      </widget>
+      <widget class="QPushButton" name="refresh_users_button">
+       <property name="geometry">
+        <rect>
+         <x>670</x>
+         <y>30</y>
+         <width>75</width>
+         <height>23</height>
+        </rect>
+       </property>
+       <property name="text">
+        <string>Refresh</string>
+       </property>
+       <property name="shortcut">
+        <string>F5</string>
        </property>
       </widget>
      </widget>
