@@ -244,6 +244,7 @@ class ClientThread(threading.Thread):
                 mysql_cursor.execute("UPDATE users SET friends = %s WHERE username = %s", (friends, self.username))
                 mysql_connection.commit()
                 self.client_socket.send("ok".encode())
+                print(f"{self.username} has added {new_friend} as a friend")
             elif data.startswith("send_friend_request"):
                 user = data.split('||')[1]
                 mysql_cursor.execute("SELECT friend_requests FROM users WHERE username = %s", (user,))
@@ -256,6 +257,16 @@ class ClientThread(threading.Thread):
                 mysql_connection.commit()
                 self.client_socket.send(fernet.encrypt("OK".encode()))
                 print(f"{self.username} has sent {user} a friend request")
+            elif data.startswith("remove_friend_request"):
+                user = data.split('||')[1]
+                mysql_cursor.execute("SELECT friend_requests FROM users WHERE username = %s", (self.username,))
+                rows = mysql_cursor.fetchone()
+                test = rows[0].split(',').remove(user)
+                friend_requests = ','.join(test)
+                mysql_cursor.execute("UPDATE users SET friend_requests = %s WHERE username = %s",
+                                     (friend_requests, user))
+                mysql_connection.commit()
+                self.client_socket.send(fernet.encrypt("OK".encode()))
             else:
                 self.client_socket.send(fernet.encrypt("Invalid command".encode()))
 

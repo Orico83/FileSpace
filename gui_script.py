@@ -22,7 +22,7 @@ from main_window import Ui_MainWindow
 
 SERVER_IP = '127.0.0.1'
 PORT = 8080
-FOLDER = r"C:\Users\orico\Desktop\FS"
+FOLDER = r"C:\Users\cyber\Desktop\FS"
 CHUNK_SIZE = 4096
 KEY = b'60MYIZvk0DXCJJWEDVf3oFD4zriwOvDrYkJGgQETf5c='
 KEYS_TO_DISABLE = [Qt.Key_Space, Qt.Key_Period, Qt.Key_Slash, Qt.Key_Comma, Qt.Key_Semicolon, Qt.Key_Colon, Qt.Key_Bar,
@@ -159,7 +159,7 @@ class MainWindow(QWidget, Ui_MainWindow):
                     self.friends_list_widget.addItems(self.friends)
                 self.friend_requests_list_widget.clear()
                 if self.friend_requests[0] == 'None':
-                    self.friends_list_widget.addItem("You don't have any friend requests!")
+                    self.friend_requests_list_widget.addItem("You don't have any friend requests!")
                 else:
                     self.friend_requests_list_widget.addItems(self.friend_requests)
 
@@ -198,21 +198,29 @@ class MainWindow(QWidget, Ui_MainWindow):
         client_socket.recv(1024)
         print(f"added {user}")
 
+    def remove_friend_request(self, user):
+        index = self.friend_requests_list_widget.currentRow()
+        self.friend_requests_list_widget.takeItem(index)
+        client_socket.send(fernet.encrypt(f"remove_friend_request ||{user}".encode()))
+
     def friend_request_double_clicked(self, item):
         user = item.text()
-
+        if user == "You don't have any friend requests!":
+            return
         dialog = QtWidgets.QMessageBox()
         dialog.setWindowTitle("Add Friend")
         dialog.setText(f"Add {user} as a friend?")
-        dialog.setStandardButtons(QtWidgets.QMessageBox.Ok | QtWidgets.QMessageBox.Cancel)
+        dialog.addButton(QtWidgets.QPushButton("Yes"), QMessageBox.YesRole)
+        dialog.addButton(QtWidgets.QPushButton("No"), QMessageBox.ActionRole)
+        dialog.addButton(QtWidgets.QPushButton("Close"), QMessageBox.ActionRole)
 
-        result = dialog.exec_()
+        dialog.exec_()
+        button = dialog.clickedButton().text()
 
-        if result == QtWidgets.QMessageBox.Ok:
-            self.add_friend(user)
-        elif result == QtWidgets.QMessageBox.Cancel:
-            index = self.friend_requests_list_widget.currentRow()
-            self.friend_requests_list_widget.takeItem(index)
+        if button != "Close":
+            self.remove_friend_request(user)
+            if button == "Yes":
+                self.add_friend(user)
 
     def search_users(self, search_text):
         if not search_text:
@@ -652,4 +660,3 @@ if __name__ == "__main__":
         widget.setFixedWidth(460)
         widget.show()
         sys.exit(app.exec_())
-
