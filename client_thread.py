@@ -2,7 +2,6 @@ from cryptography.fernet import Fernet
 import os
 import shutil
 import threading
-import time
 from pickle import dumps, loads
 
 import mysql
@@ -147,9 +146,7 @@ class ClientThread(threading.Thread):
                 encrypted_dir_data = b''
                 print("Receiving folder...")
                 while bytes_received < data_len:
-                    time.sleep(0.00001)
                     chunk = self.client_socket.recv(CHUNK_SIZE)
-                    time.sleep(0.00001)
                     bytes_received += CHUNK_SIZE
                     encrypted_dir_data += chunk
                 dir_data = fernet.decrypt(encrypted_dir_data)
@@ -158,6 +155,7 @@ class ClientThread(threading.Thread):
                 with self.lock:
                     directory.create(location)
                 print(f"Folder {location} uploaded")
+                self.client_socket.send(fernet.encrypt("OK".encode()))
             elif data.startswith("upload_file"):
                 self.client_socket.send(fernet.encrypt("OK".encode()))
                 data_len = int(data.split("||")[1])
@@ -223,15 +221,19 @@ class ClientThread(threading.Thread):
                     with open(file_path, "wb") as f:
                         f.write(file_data)
                 self.client_socket.send(fernet.encrypt("OK".encode()))
-            elif data.startswith("refresh_users"):
+            elif data.startswith("refresh"):
                 try:
                     # Execute the query to fetch the updated user list
                     mysql_cursor.execute("SELECT username FROM users")
-
                     # Fetch all the usernames from the result
                     rows = mysql_cursor.fetchall()
                     updated_users = ','.join([row[0] for row in rows])
-                    self.client_socket.send(fernet.encrypt(updated_users.encode()))
+                    mysql_cursor.execute("SELECT friends, friend_requests FROM users WHERE username = %s", (self.username,))
+                    rows = mysql_cursor.fetchall()
+                    friends = rows[0][0]
+                    friend_requests = rows[0][1]
+                    self.client_socket.send(fernet.encrypt(f"{updated_users}||{friends}||{friend_requests}".encode()))
+                    print(f"Sent users, friends and friend requests to client: {self.username}")
                 except Exception as error:
                     print(error)
                     self.client_socket.send(fernet.encrypt("Error refreshing users".encode()))
@@ -240,8 +242,20 @@ class ClientThread(threading.Thread):
                 self.friends.append(new_friend)
                 friends = ','.join(self.friends)
                 mysql_cursor.execute("UPDATE users SET friends = %s WHERE username = %s", (friends, self.username))
+                mysql_connection.commit()
                 self.client_socket.send("ok".encode())
-
+            elif data.startswith("send_friend_request"):
+                user = data.split('||')[1]
+                mysql_cursor.execute("SELECT friend_requests FROM users WHERE username = %s", (user,))
+                rows = mysql_cursor.fetchone()
+                if rows[0] is None:
+                    friend_requests = self.username
+                else:
+                    friend_requests = rows[0] + ',' + self.username
+                mysql_cursor.execute("UPDATE users SET friend_requests = %s WHERE username = %s", (friend_requests, user))
+                mysql_connection.commit()
+                self.client_socket.send(fernet.encrypt("OK".encode()))
+                print(f"{self.username} has sent {user} a friend request")
             else:
                 self.client_socket.send(fernet.encrypt("Invalid command".encode()))
 

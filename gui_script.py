@@ -1,7 +1,12 @@
+# TOD add remove friend
+# TOD remove friend request from db after it was rejected/accepted
+# TOD close thread when gui closes
 import hashlib
 import os
 import shutil
 import socket
+import threading
+import time
 from pickle import loads, dumps
 
 from cryptography.fernet import Fernet
@@ -17,7 +22,7 @@ from main_window import Ui_MainWindow
 
 SERVER_IP = '127.0.0.1'
 PORT = 8080
-FOLDER = r"C:\Users\cyber\Desktop\FS"
+FOLDER = r"C:\Users\orico\Desktop\FS"
 CHUNK_SIZE = 4096
 KEY = b'60MYIZvk0DXCJJWEDVf3oFD4zriwOvDrYkJGgQETf5c='
 KEYS_TO_DISABLE = [Qt.Key_Space, Qt.Key_Period, Qt.Key_Slash, Qt.Key_Comma, Qt.Key_Semicolon, Qt.Key_Colon, Qt.Key_Bar,
@@ -71,13 +76,14 @@ def open_file(item_path):
 class MainWindow(QWidget, Ui_MainWindow):
     def __init__(self, dir_path):
         super().__init__()
+        self.lock = threading.Lock()
         self.copied_item_path = None
         self.cut_item_path = None
         self.dir_path = dir_path
         self.directory_history = []  # List to store directory history
         self.users = []
-        self.friends = ["1", "12", "23"]
-        self.friend_request = []
+        self.friends = []
+        self.friend_requests = []
         self.setupUi(self)
         self.model = QFileSystemModel()
         self.model.setRootPath(dir_path)
@@ -88,7 +94,7 @@ class MainWindow(QWidget, Ui_MainWindow):
         self.list_view.setViewMode(QtWidgets.QListView.IconMode)
         self.set_initial_directory()
         self.tabs.setCurrentIndex(0)
-        self.refresh_users()
+        # self.refresh_users()
         self.list_view.doubleClicked.connect(self.on_list_view_double_clicked)
         self.upload_files_button.clicked.connect(self.upload_files)  # Connect the upload button to the method
         self.upload_folders_button.clicked.connect(self.upload_folders)
@@ -105,19 +111,28 @@ class MainWindow(QWidget, Ui_MainWindow):
         self.watcher.fileChanged.connect(self.file_changed)
         # self.initiate_friends()
         self.friends_list_widget.itemDoubleClicked.connect(self.friend_double_clicked)
-
         self.friend_requests_list_widget.itemDoubleClicked.connect(self.friend_request_double_clicked)
 
         self.search_bar.textChanged.connect(self.search_users)
-        self.refresh_users_button.clicked.connect(self.refresh_users)
         self.search_results_list.itemDoubleClicked.connect(self.add_friend_win)
+        refreshes_thread = threading.Thread(target=self.handle_refreshes)
+        refreshes_thread.start()
+
+    def send_message(self, message):
+        with self.lock:
+            client_socket.send(fernet.encrypt(message))
+
+    def handle_refreshes(self):
+        while True:
+            threading.Thread(target=self.refresh).start()
+            time.sleep(60)
 
     def add_friend_win(self, item):
         user = item.text()
         dialog = QDialog()
         dialog.setWindowTitle("Add Friend")
         layout = QtWidgets.QVBoxLayout()
-        label = QLabel(f"add {user} as friend?")
+        label = QLabel(f"Send {user} a friend request?")
         layout.addWidget(label)
         popup = QDialogButtonBox(QDialogButtonBox.Yes | QDialogButtonBox.No)
         popup.accepted.connect(dialog.accept)
@@ -126,7 +141,56 @@ class MainWindow(QWidget, Ui_MainWindow):
         dialog.setLayout(layout)
         result = dialog.exec_()
         if result == QDialog.Accepted:
-            self.add_friend(user)
+            self.send_friend_request(user)
+
+    def refresh(self):
+        try:
+            with self.lock:
+                client_socket.send(fernet.encrypt("refresh".encode()))
+                data = fernet.decrypt(client_socket.recv(1024)).decode()
+                self.users = data.split('||')[0].split(',')
+                self.users.remove(os.path.basename(self.dir_path))
+                self.friends = data.split('||')[1].split(',')
+                self.friend_requests = data.split('||')[2].split(',')
+                self.friends_list_widget.clear()
+                if self.friends[0] == 'None':
+                    self.friends_list_widget.addItem("You don't have friends yet!")
+                else:
+                    self.friends_list_widget.addItems(self.friends)
+                self.friend_requests_list_widget.clear()
+                if self.friend_requests[0] == 'None':
+                    self.friends_list_widget.addItem("You don't have any friend requests!")
+                else:
+                    self.friend_requests_list_widget.addItems(self.friend_requests)
+
+        except OSError and ValueError:
+            pass
+
+    def friend_double_clicked(self, item):
+        # Handle double click on a friend item
+        friend_username = item.text()
+        # Implement the desired functionality, such as opening a chat window with the friend
+
+    def send_friend_request(self, user):
+        client_socket.send(fernet.encrypt(f"send_friend_request ||{user}".encode()))
+        client_socket.recv(1024)
+        print(f"Sent a friend request to {user}")
+
+    def user_double_clicked(self, item):
+        user = item.text()
+        dialog = QDialog()
+        dialog.setWindowTitle("Send Friend Request")
+        layout = QtWidgets.QVBoxLayout()
+        label = QLabel(f"Send {user} a friend request?")
+        layout.addWidget(label)
+        popup = QDialogButtonBox(QDialogButtonBox.Yes | QDialogButtonBox.No)
+        popup.accepted.connect(dialog.accept)
+        popup.rejected.connect(dialog.reject)
+        layout.addWidget(popup)
+        dialog.setLayout(layout)
+        result = dialog.exec_()
+        if result == QDialog.Accepted:
+            self.send_friend_request(user)
 
     def add_friend(self, user):
         self.friends.append(user)
@@ -134,28 +198,21 @@ class MainWindow(QWidget, Ui_MainWindow):
         client_socket.recv(1024)
         print(f"added {user}")
 
-
-    def refresh_users(self):
-        client_socket.send(fernet.encrypt("refresh_users".encode()))
-        users = fernet.decrypt(client_socket.recv(1024)).decode()
-        self.users = users.split(',')
-        self.users.remove(os.path.basename(self.dir_path))
-
-    def initiate_friends(self):
-        client_socket.send(fernet.encrypt("initiate_friends".encode()))
-        self.friends = loads(fernet.decrypt(client_socket.recv(1024)))
-        for friend in self.friends:
-            self.friends_list_widget.addItem(friend)
-
-    def friend_double_clicked(self, item):
-        # Handle double click on a friend item
-        friend_username = item.text()
-        # Implement the desired functionality, such as opening a chat window with the friend
-
     def friend_request_double_clicked(self, item):
-        # Handle double click on a friend request item
-        friend_request_info = item.text()
-        # Implement the desired functionality, such as accepting or declining the friend request
+        user = item.text()
+
+        dialog = QtWidgets.QMessageBox()
+        dialog.setWindowTitle("Add Friend")
+        dialog.setText(f"Add {user} as a friend?")
+        dialog.setStandardButtons(QtWidgets.QMessageBox.Ok | QtWidgets.QMessageBox.Cancel)
+
+        result = dialog.exec_()
+
+        if result == QtWidgets.QMessageBox.Ok:
+            self.add_friend(user)
+        elif result == QtWidgets.QMessageBox.Cancel:
+            index = self.friend_requests_list_widget.currentRow()
+            self.friend_requests_list_widget.takeItem(index)
 
     def search_users(self, search_text):
         if not search_text:
@@ -411,7 +468,8 @@ class MainWindow(QWidget, Ui_MainWindow):
             client_socket.send(fernet.encrypt(f"create_folder || {relative_path}".encode()))
 
     def upload_folders(self):
-        directory = QtWidgets.QFileDialog.getExistingDirectory(self, "Select Folder to Upload", QtCore.QDir.homePath())
+        directory = QtWidgets.QFileDialog.getExistingDirectory(self, "Select Folder to Upload",
+                                                               QtCore.QDir.homePath())
         parent_path = self.model.rootPath()
         if directory:
             # Check if a directory is selected
@@ -423,11 +481,18 @@ class MainWindow(QWidget, Ui_MainWindow):
             self.model.setRootPath(self.model.rootPath())
             serialized_dir = dumps(new_dir)
             encrypted_dir = fernet.encrypt(serialized_dir)
-            c = os.path.relpath(new_dir.path, FOLDER)
-            client_socket.send(fernet.encrypt(
-                f"upload_dir || {len(encrypted_dir)} || {os.path.relpath(new_dir.path, FOLDER)}".encode()))
-            client_socket.recv(1024)
-            client_socket.send(encrypted_dir)
+
+            def upload_directory():
+                encrypted_message = fernet.encrypt(
+                    f"upload_dir || {len(encrypted_dir)} || {os.path.relpath(new_dir.path, FOLDER)}".encode())
+                client_socket.send(encrypted_message)
+                client_socket.recv(1024)
+                client_socket.send(encrypted_dir)
+                client_socket.recv(2)
+
+            # Create a thread and start the network operations
+            thread = threading.Thread(target=upload_directory)
+            thread.start()
 
     def upload_files(self):
         file_dialog = QtWidgets.QFileDialog(self, "Select File to Upload")
@@ -447,6 +512,7 @@ class MainWindow(QWidget, Ui_MainWindow):
                 shutil.copyfile(file.path, destination_path)
                 serialized_file = dumps(file)
                 encrypted_file = fernet.encrypt(serialized_file)
+
                 client_socket.send(fernet.encrypt(f"upload_file || {len(encrypted_file)} ||"
                                                   f" {os.path.relpath(destination_path, FOLDER)}".encode()))
                 client_socket.recv(1024)
@@ -586,3 +652,4 @@ if __name__ == "__main__":
         widget.setFixedWidth(460)
         widget.show()
         sys.exit(app.exec_())
+

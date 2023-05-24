@@ -29,7 +29,7 @@
       <enum>Qt::DefaultContextMenu</enum>
      </property>
      <property name="currentIndex">
-      <number>1</number>
+      <number>0</number>
      </property>
      <widget class="QWidget" name="myfolder_tab">
       <attribute name="title">
@@ -138,6 +138,14 @@
          <height>511</height>
         </rect>
        </property>
+       <property name="font">
+        <font>
+         <pointsize>14</pointsize>
+        </font>
+       </property>
+       <property name="alternatingRowColors">
+        <bool>true</bool>
+       </property>
       </widget>
       <widget class="QLabel" name="friends_label">
        <property name="geometry">
@@ -166,6 +174,17 @@
          <height>511</height>
         </rect>
        </property>
+       <property name="font">
+        <font>
+         <pointsize>14</pointsize>
+        </font>
+       </property>
+       <property name="contextMenuPolicy">
+        <enum>Qt::DefaultContextMenu</enum>
+       </property>
+       <property name="alternatingRowColors">
+        <bool>true</bool>
+       </property>
       </widget>
       <widget class="QLabel" name="friend_requests_label">
        <property name="geometry">
@@ -189,15 +208,18 @@
        <property name="geometry">
         <rect>
          <x>550</x>
-         <y>60</y>
+         <y>30</y>
          <width>256</width>
-         <height>481</height>
+         <height>511</height>
         </rect>
        </property>
        <property name="font">
         <font>
          <pointsize>14</pointsize>
         </font>
+       </property>
+       <property name="alternatingRowColors">
+        <bool>true</bool>
        </property>
       </widget>
       <widget class="QLabel" name="search_users_label">
@@ -229,22 +251,6 @@
        </property>
        <property name="text">
         <string/>
-       </property>
-      </widget>
-      <widget class="QPushButton" name="refresh_users_button">
-       <property name="geometry">
-        <rect>
-         <x>670</x>
-         <y>30</y>
-         <width>75</width>
-         <height>23</height>
-        </rect>
-       </property>
-       <property name="text">
-        <string>Refresh</string>
-       </property>
-       <property name="shortcut">
-        <string>F5</string>
        </property>
       </widget>
      </widget>
