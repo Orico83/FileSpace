@@ -1,4 +1,5 @@
-from cryptography.fernet import Fernet
+from cryptography.fernet import Fernet, InvalidToken
+import rsa
 import os
 import shutil
 import threading
@@ -9,9 +10,9 @@ from file_classes import Directory
 
 FOLDER = "./ServerFolder"
 CHUNK_SIZE = 4096
-KEY = b'60MYIZvk0DXCJJWEDVf3oFD4zriwOvDrYkJGgQETf5c='
-
-fernet = Fernet(KEY)
+public_key, private_key = rsa.newkeys(1024)
+SYMMETRIC_KEY = Fernet.generate_key()
+fernet = Fernet(SYMMETRIC_KEY)
 database_config = {
     "host": "localhost",
     "user": "root",
@@ -31,68 +32,79 @@ class ClientThread(threading.Thread):
         self.folder_path = None
         self.friends = []
         self.friend_requests = []
-        self.lock = None  # Lock for the username
+        self.username_lock = None  # Lock for the username
+        self.lock = threading.Lock()
 
     def run(self):
+        mysql_cursor = None
+        mysql_connection = None
+        print(f"Connection from {self.client_address}")
+        self.client_socket.send(public_key.save_pkcs1("PEM"))
+        public_partner = rsa.PublicKey.load_pkcs1(self.client_socket.recv(1024))
+        # Encrypt the symmetric key using the client's public key
+        encrypted_symmetric_key = rsa.encrypt(SYMMETRIC_KEY, public_partner)
+        # Send the encrypted symmetric key to the client
+        self.client_socket.send(encrypted_symmetric_key)
         try:
+            while True:
+                # Receive the command from the client (login or signup)
+                data = fernet.decrypt(self.client_socket.recv(1024)).decode().strip()
+                command = data.split()[0]
+                print(command)
 
-            print(f"Connection from {self.client_address}")
-            # Receive the command from the client (login or signup)
-            data = fernet.decrypt(self.client_socket.recv(1024)).decode().strip()
-            command = data.split()[0]
-            print(command)
+                # Verify the username and password against the MySQL table
+                mysql_connection = mysql.connector.connect(**database_config)
+                mysql_cursor = mysql_connection.cursor()
+                if command == "login":
+                    # Receive the username and password from the client
+                    self.username = data.split()[1]
+                    password = data.split()[2]
+                    print(f"Username: {self.username} | Password: {password}")
 
-            # Verify the username and password against the MySQL table
-            mysql_connection = mysql.connector.connect(**database_config)
-            mysql_cursor = mysql_connection.cursor()
-            if command == "login":
-                # Receive the username and password from the client
-                self.username = data.split()[1]
-                password = data.split()[2]
-                print(f"Username: {self.username} | Password: {password}")
-
-                mysql_cursor.execute("SELECT * FROM users WHERE username = %s AND password = %s",
-                                     (self.username, password))
-                result = mysql_cursor.fetchone()
-                if result:
-                    self.client_socket.send(fernet.encrypt("OK".encode()))
-                    self.folder_path = os.path.join(FOLDER, self.username)
-                    self.friends = [] if result[3] is None else result[3].split(',')
-                    self.friend_requests = [] if result[4] is None else result[4].split(',')
-                    self.handle_commands(mysql_connection, mysql_cursor)  # Call a method to handle subsequent commands
-
-                else:
-                    self.client_socket.send(fernet.encrypt("FAIL".encode()))
-            elif command == "signup":
-                # Receive the username and password from the client
-                self.username = data.split()[1]
-                password = data.split()[2]
-                print(f"Username: {self.username} | Password: {password}")
-                # Check if the username already exists in the table
-                mysql_cursor.execute("SELECT * FROM users WHERE username = %s", (self.username,))
-                result = mysql_cursor.fetchone()
-                if result:
-                    self.client_socket.send(fernet.encrypt("FAIL".encode()))
-                else:
-                    mysql_cursor.execute("INSERT INTO users (username, password) VALUES (%s, %s)",
+                    mysql_cursor.execute("SELECT * FROM users WHERE username = %s AND password = %s",
                                          (self.username, password))
-                    mysql_connection.commit()
-                    self.folder_path = os.path.join(FOLDER, self.username)
-                    os.makedirs(self.folder_path)
-                    self.client_socket.send(fernet.encrypt("OK".encode()))
-                    self.handle_commands(mysql_connection, mysql_cursor)  # Call a method to handle subsequent commands
+                    result = mysql_cursor.fetchone()
+                    if result:
+                        self.client_socket.send(fernet.encrypt("OK".encode()))
+                        self.folder_path = os.path.join(FOLDER, self.username)
+                        self.friends = [] if result[3] is None else result[3].split(',')
+                        self.friend_requests = [] if result[4] is None else result[4].split(',')
+                        self.handle_commands(mysql_connection,
+                                             mysql_cursor)  # Call a method to handle subsequent commands
 
+                    else:
+                        self.client_socket.send(fernet.encrypt("FAIL".encode()))
+                elif command == "signup":
+                    # Receive the username and password from the client
+                    self.username = data.split()[1]
+                    password = data.split()[2]
+                    print(f"Username: {self.username} | Password: {password}")
+                    # Check if the username already exists in the table
+                    mysql_cursor.execute("SELECT * FROM users WHERE username = %s", (self.username,))
+                    result = mysql_cursor.fetchone()
+                    if result:
+                        self.client_socket.send(fernet.encrypt("FAIL".encode()))
+                    else:
+                        mysql_cursor.execute("INSERT INTO users (username, password) VALUES (%s, %s)",
+                                             (self.username, password))
+                        mysql_connection.commit()
+                        self.folder_path = os.path.join(FOLDER, self.username)
+                        os.makedirs(self.folder_path)
+                        self.client_socket.send(fernet.encrypt("OK".encode()))
+                        self.handle_commands(mysql_connection,
+                                             mysql_cursor)  # Call a method to handle subsequent commands
+        except InvalidToken:
             # Close the MySQL connection and client socket
-            mysql_cursor.close()
-            mysql_connection.close()
+            if mysql_cursor is not None:
+                mysql_cursor.close()
+            if mysql_connection is not None:
+                mysql_connection.close()
             self.client_socket.close()
             print(f"Connection from {self.client_address} closed")
-        except Exception as err:
-            print(err)
 
     def handle_commands(self, mysql_connection, mysql_cursor):
         # Set the lock for the username
-        self.lock = username_locks.setdefault(self.username, threading.Lock())
+        self.username_lock = username_locks.setdefault(self.username, threading.Lock())
         while True:
             # Receive the command from the client
             data = fernet.decrypt(self.client_socket.recv(1024)).decode()
@@ -117,20 +129,20 @@ class ClientThread(threading.Thread):
                 self.client_socket.send(fernet.encrypt(dumps(self.friends)))
             elif data.startswith("delete_item"):
                 item_path = os.path.join(FOLDER, data.split("||")[1].strip())
-                with self.lock:
+                with self.username_lock:
                     delete_item(item_path)
                 print(f"Deleted {item_path}")
             elif data.startswith("rename_item"):
                 item_path = os.path.join(FOLDER, data.split("||")[1].strip())
                 new_name = data.split("||")[-1].strip()
-                with self.lock:
+                with self.username_lock:
                     rename_item(item_path, new_name)
                 print(f"Renamed {item_path} to {new_name}")
             elif data.startswith("create_file"):
                 new_file_path = os.path.join(FOLDER, data.split("||")[1].strip())
                 if os.path.exists(new_file_path):
                     return
-                with self.lock:
+                with self.username_lock:
                     # Create the new file
                     with open(new_file_path, 'w'):
                         pass  # Do nothing, just create an empty file
@@ -152,7 +164,7 @@ class ClientThread(threading.Thread):
                 dir_data = fernet.decrypt(encrypted_dir_data)
                 directory = loads(dir_data)
                 location = os.path.join(FOLDER, data.split("||")[2].strip())
-                with self.lock:
+                with self.username_lock:
                     directory.create(location)
                 print(f"Folder {location} uploaded")
                 self.client_socket.send(fernet.encrypt("OK".encode()))
@@ -169,7 +181,7 @@ class ClientThread(threading.Thread):
                 file_data = fernet.decrypt(encrypted_file_data)
                 file = loads(file_data)
                 file_path = os.path.join(FOLDER, data.split("||")[2].strip())
-                with self.lock:
+                with self.username_lock:
                     file.create(file_path)
                 self.client_socket.send(fernet.encrypt("OK".encode()))
                 print(f"File {file_path} uploaded")
@@ -177,7 +189,7 @@ class ClientThread(threading.Thread):
             elif data.startswith("copy"):
                 copied_item_path = os.path.join(FOLDER, data.split("||")[1])
                 destination_path = os.path.join(FOLDER, data.split("||")[2])
-                with self.lock:
+                with self.username_lock:
                     # Copy the file or folder
                     if os.path.isfile(copied_item_path):
                         try:
@@ -197,7 +209,7 @@ class ClientThread(threading.Thread):
             elif data.startswith("move"):
                 cut_item_path = os.path.join(FOLDER, data.split("||")[1])
                 destination_path = os.path.join(FOLDER, data.split("||")[2])
-                with self.lock:
+                with self.username_lock:
                     try:
                         # Move the file or folder
                         shutil.move(cut_item_path, destination_path)
@@ -217,56 +229,88 @@ class ClientThread(threading.Thread):
                     encrypted_file_data += chunk
                 file_data = fernet.decrypt(encrypted_file_data)
                 # Acquire the lock before opening the file and writing to it
-                with self.lock:
+                with self.username_lock:
                     with open(file_path, "wb") as f:
                         f.write(file_data)
                 self.client_socket.send(fernet.encrypt("OK".encode()))
             elif data.startswith("refresh"):
-                try:
-                    # Execute the query to fetch the updated user list
-                    mysql_cursor.execute("SELECT username FROM users")
-                    # Fetch all the usernames from the result
-                    rows = mysql_cursor.fetchall()
-                    updated_users = ','.join([row[0] for row in rows])
-                    mysql_cursor.execute("SELECT friends, friend_requests FROM users WHERE username = %s", (self.username,))
-                    rows = mysql_cursor.fetchall()
-                    friends = rows[0][0]
-                    friend_requests = rows[0][1]
-                    self.client_socket.send(fernet.encrypt(f"{updated_users}||{friends}||{friend_requests}".encode()))
-                    print(f"Sent users, friends and friend requests to client: {self.username}")
-                except Exception as error:
-                    print(error)
-                    self.client_socket.send(fernet.encrypt("Error refreshing users".encode()))
+                with self.lock:
+                    try:
+                        mysql_connection = mysql.connector.connect(**database_config)
+                        mysql_cursor = mysql_connection.cursor()
+                        # Execute the query to fetch the updated user list
+                        mysql_cursor.execute("SELECT username FROM users")
+                        # Fetch all the usernames from the result
+                        rows = mysql_cursor.fetchall()
+                        updated_users = ','.join([row[0] for row in rows])
+                        mysql_cursor.execute("SELECT friends, friend_requests FROM users WHERE username = %s",
+                                             (self.username,))
+                        row = mysql_cursor.fetchone()
+                        self.friends = [] if row[0] is None else row[0].split(',')
+                        self.friend_requests = [] if row[1] is None else row[1].split(',')
+                        friends = ','.join(self.friends)
+                        friend_requests = ','.join(self.friend_requests)
+                        self.client_socket.send(fernet.encrypt(f"{updated_users}||"
+                                                               f"{friends}||{friend_requests}".encode()))
+                        print(f"Sent users, friends and friend requests to client: {self.username}")
+                    except Exception as error:
+                        print(error)
+                        self.client_socket.send(fernet.encrypt("Error refreshing users".encode()))
             elif data.startswith("add_friend"):
                 new_friend = data.split()[1]
                 self.friends.append(new_friend)
                 friends = ','.join(self.friends)
+                mysql_cursor.execute("SELECT friends FROM users WHERE username = %s", (new_friend,))
+                row = mysql_cursor.fetchone()
+                add_to_new_friend = row[0] + ',' + self.username if row[0] is not None else self.username
                 mysql_cursor.execute("UPDATE users SET friends = %s WHERE username = %s", (friends, self.username))
+                mysql_cursor.execute("UPDATE users SET friends = %s WHERE username = %s",
+                                     (add_to_new_friend, new_friend))
                 mysql_connection.commit()
                 self.client_socket.send("ok".encode())
                 print(f"{self.username} has added {new_friend} as a friend")
             elif data.startswith("send_friend_request"):
                 user = data.split('||')[1]
                 mysql_cursor.execute("SELECT friend_requests FROM users WHERE username = %s", (user,))
-                rows = mysql_cursor.fetchone()
-                if rows[0] is None:
-                    friend_requests = self.username
+                row = mysql_cursor.fetchone()
+                check_requests = row[0].split(',') if row[0] is not None else []
+                if self.username not in check_requests:
+                    if row[0] is None:
+                        friend_requests = self.username
+                    else:
+                        friend_requests = row[0] + ',' + self.username
+                    mysql_cursor.execute("UPDATE users SET friend_requests = %s WHERE username = %s",
+                                         (friend_requests, user))
+                    mysql_connection.commit()
+                    print(f"{self.username} has sent {user} a friend request")
+                    self.client_socket.send(fernet.encrypt("OK".encode()))
                 else:
-                    friend_requests = rows[0] + ',' + self.username
-                mysql_cursor.execute("UPDATE users SET friend_requests = %s WHERE username = %s", (friend_requests, user))
-                mysql_connection.commit()
-                self.client_socket.send(fernet.encrypt("OK".encode()))
-                print(f"{self.username} has sent {user} a friend request")
+                    self.client_socket.send(fernet.encrypt("You've already sent this user a friend request".encode()))
             elif data.startswith("remove_friend_request"):
                 user = data.split('||')[1]
-                mysql_cursor.execute("SELECT friend_requests FROM users WHERE username = %s", (self.username,))
-                rows = mysql_cursor.fetchone()
-                test = rows[0].split(',').remove(user)
-                friend_requests = ','.join(test)
+                self.friend_requests.remove(user)
+                friend_requests = ','.join(self.friend_requests) if self.friend_requests else None
                 mysql_cursor.execute("UPDATE users SET friend_requests = %s WHERE username = %s",
-                                     (friend_requests, user))
+                                     (friend_requests, self.username))
                 mysql_connection.commit()
-                self.client_socket.send(fernet.encrypt("OK".encode()))
+            elif data.startswith("remove_friend"):
+                friend = data.split("||")[1]
+                self.friends.remove(friend)
+                friends = ','.join(self.friends) if self.friends else None
+                mysql_cursor.execute("SELECT friends FROM users WHERE username = %s", (friend,))
+                row = mysql_cursor.fetchone()
+                removed_friend_friends = row[0].split(',')
+                removed_friend_friends.remove(self.username)
+                removed_friend_friends = ','.join(removed_friend_friends) if removed_friend_friends else None
+                mysql_cursor.execute("UPDATE users SET friends = %s WHERE username = %s", (friends, self.username))
+                mysql_cursor.execute("UPDATE users SET friends = %s WHERE username = %s",
+                                     (removed_friend_friends, friend))
+                mysql_connection.commit()
+                print(f"{self.username} and {friend} are no longer friends")
+            elif data.startswith("share"):
+                share_to = data.split("||")[1]
+                permissions = data.split("||")[2]
+                print(f"{self.username} has shared his folder with {share_to} with {permissions} permissions")
             else:
                 self.client_socket.send(fernet.encrypt("Invalid command".encode()))
 

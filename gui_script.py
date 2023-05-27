@@ -1,6 +1,3 @@
-# TOD add remove friend
-# TOD remove friend request from db after it was rejected/accepted
-# TOD close thread when gui closes
 import hashlib
 import os
 import shutil
@@ -8,13 +5,13 @@ import socket
 import threading
 import time
 from pickle import loads, dumps
-
+import rsa
 from cryptography.fernet import Fernet
 from login_window import UiLogin
 from signup_window import UiSignup
 from PyQt5.QtWidgets import QApplication, QMainWindow, QLineEdit, QWidget, QFileSystemModel, QInputDialog, QMessageBox, \
-    QDialogButtonBox, QDialog, QLabel
-from PyQt5 import QtCore, QtGui, QtWidgets
+    QPushButton
+from PyQt5 import QtCore, QtWidgets
 from PyQt5.QtCore import Qt, QFileSystemWatcher
 import sys
 from file_classes import File, Directory
@@ -22,13 +19,15 @@ from main_window import Ui_MainWindow
 
 SERVER_IP = '127.0.0.1'
 PORT = 8080
-FOLDER = r"C:\Users\cyber\Desktop\FS"
+FOLDER = r"C:\Users\orico\Desktop\FS"
 CHUNK_SIZE = 4096
-KEY = b'60MYIZvk0DXCJJWEDVf3oFD4zriwOvDrYkJGgQETf5c='
 KEYS_TO_DISABLE = [Qt.Key_Space, Qt.Key_Period, Qt.Key_Slash, Qt.Key_Comma, Qt.Key_Semicolon, Qt.Key_Colon, Qt.Key_Bar,
                    Qt.Key_Backslash, Qt.Key_BracketLeft, Qt.Key_BracketRight, Qt.Key_ParenLeft, Qt.Key_ParenRight,
                    Qt.Key_BraceLeft, Qt.Key_BraceRight, Qt.Key_Apostrophe, Qt.Key_QuoteDbl]
-fernet = Fernet(KEY)
+REFRESH_FREQUENCY = 5
+NO_FRIENDS = "No Friends Added"
+NO_FRIEND_REQUESTS = "No Friend Requests"
+
 
 
 def disable_keys(field):
@@ -77,6 +76,7 @@ class MainWindow(QWidget, Ui_MainWindow):
     def __init__(self, dir_path):
         super().__init__()
         self.lock = threading.Lock()
+        self.exit = False
         self.copied_item_path = None
         self.cut_item_path = None
         self.dir_path = dir_path
@@ -84,7 +84,9 @@ class MainWindow(QWidget, Ui_MainWindow):
         self.users = []
         self.friends = []
         self.friend_requests = []
+        self.sent_requests = []
         self.setupUi(self)
+        self.setWindowTitle("FileSpace")
         self.model = QFileSystemModel()
         self.model.setRootPath(dir_path)
         self.list_view.setModel(self.model)
@@ -114,34 +116,32 @@ class MainWindow(QWidget, Ui_MainWindow):
         self.friend_requests_list_widget.itemDoubleClicked.connect(self.friend_request_double_clicked)
 
         self.search_bar.textChanged.connect(self.search_users)
-        self.search_results_list.itemDoubleClicked.connect(self.add_friend_win)
+        self.search_results_list.itemDoubleClicked.connect(self.user_double_clicked)
         refreshes_thread = threading.Thread(target=self.handle_refreshes)
         refreshes_thread.start()
+
+    def closeEvent(self, event):
+        reply = QMessageBox.question(
+            self,
+            "Confirmation",
+            "Are you sure you want to exit?",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
+        )
+        if reply == QMessageBox.Yes:
+            # Perform any necessary cleanup or save operations here
+            event.accept()
+        else:
+            event.ignore()
 
     def send_message(self, message):
         with self.lock:
             client_socket.send(fernet.encrypt(message))
 
     def handle_refreshes(self):
-        while True:
+        while not self.exit:
             threading.Thread(target=self.refresh).start()
-            time.sleep(60)
-
-    def add_friend_win(self, item):
-        user = item.text()
-        dialog = QDialog()
-        dialog.setWindowTitle("Add Friend")
-        layout = QtWidgets.QVBoxLayout()
-        label = QLabel(f"Send {user} a friend request?")
-        layout.addWidget(label)
-        popup = QDialogButtonBox(QDialogButtonBox.Yes | QDialogButtonBox.No)
-        popup.accepted.connect(dialog.accept)
-        popup.rejected.connect(dialog.reject)
-        layout.addWidget(popup)
-        dialog.setLayout(layout)
-        result = dialog.exec_()
-        if result == QDialog.Accepted:
-            self.send_friend_request(user)
+            time.sleep(REFRESH_FREQUENCY)
 
     def refresh(self):
         try:
@@ -149,63 +149,155 @@ class MainWindow(QWidget, Ui_MainWindow):
                 client_socket.send(fernet.encrypt("refresh".encode()))
                 data = fernet.decrypt(client_socket.recv(1024)).decode()
                 self.users = data.split('||')[0].split(',')
+                print(self.users)
                 self.users.remove(os.path.basename(self.dir_path))
-                self.friends = data.split('||')[1].split(',')
-                self.friend_requests = data.split('||')[2].split(',')
+                friends = data.split('||')[1].split(',')
+                friend_requests = data.split('||')[2].split(',')
+                self.friends = friends if friends[0] else []
+                self.friend_requests = friend_requests if friend_requests[0] else []
                 self.friends_list_widget.clear()
-                if self.friends[0] == 'None':
-                    self.friends_list_widget.addItem("You don't have friends yet!")
+                # TODO delete the 2 lines below
+                print(self.friends)
+                print(self.friend_requests)
+                if not self.friends:
+                    self.friends_list_widget.addItem(NO_FRIENDS)
                 else:
                     self.friends_list_widget.addItems(self.friends)
                 self.friend_requests_list_widget.clear()
-                if self.friend_requests[0] == 'None':
-                    self.friend_requests_list_widget.addItem("You don't have any friend requests!")
+                if not self.friend_requests:
+                    self.friend_requests_list_widget.addItem(NO_FRIEND_REQUESTS)
                 else:
                     self.friend_requests_list_widget.addItems(self.friend_requests)
 
-        except OSError and ValueError:
-            pass
+        except OSError:
+            self.exit = True
 
     def friend_double_clicked(self, item):
-        # Handle double click on a friend item
-        friend_username = item.text()
-        # Implement the desired functionality, such as opening a chat window with the friend
+        friend_name = item.text()  # Assuming the item is a QListWidgetItem
+        if friend_name == NO_FRIENDS:
+            return
+        # Create a dialog box
+        dialog = QMessageBox()
+        dialog.setWindowTitle("Friend Details")
+        dialog.setText(f"Friend: {friend_name}")
+
+        # Add share and remove buttons
+        share_button = dialog.addButton("Share", QMessageBox.ActionRole)
+        remove_button = dialog.addButton("Remove Friend", QMessageBox.ActionRole)
+
+        # Add a cancel button
+        cancel_button = dialog.addButton(QMessageBox.Cancel)
+
+        # Disable the default OK button
+        dialog.setDefaultButton(cancel_button)
+
+        # Execute the dialog and handle the button clicked event
+        dialog.exec_()
+
+        clicked_button = dialog.clickedButton()
+        if clicked_button == share_button:
+            # Share button clicked, call self.share_friend
+            self.share_friend(friend_name)
+        elif clicked_button == remove_button:
+            # Remove friend button clicked, call self.remove_friend
+            self.remove_friend(friend_name)
+        elif clicked_button == cancel_button:
+            # Cancel button clicked, do nothing or perform any required cleanup
+            print("Canceled")
+
+    def share_friend(self, friend_name):
+        # Create a Directory object to be shared
+        directory = Directory(self.dir_path)
+
+        # Show a pop-up message box to ask for permissions
+        message_box = QMessageBox()
+        message_box.setWindowTitle("Permission Selection")
+        message_box.setText(f"What permissions would you like to give {friend_name}?")
+
+        # Add buttons for read, write, and cancel options
+        read_button = QPushButton("Read Only")
+        write_button = QPushButton("Read And Write")
+        cancel_button = QPushButton("Cancel")
+        message_box.addButton(read_button, QMessageBox.ButtonRole.AcceptRole)
+        message_box.addButton(write_button, QMessageBox.ButtonRole.AcceptRole)
+        message_box.addButton(cancel_button, QMessageBox.ButtonRole.RejectRole)
+        message_box.setDefaultButton(cancel_button)
+        # Execute the message box and get the selected button
+        clicked_button = message_box.exec_()
+        # Process the selected button
+        if clicked_button == 0:
+            print(f"Sharing read-only with friend: {friend_name}")
+            # TODO: Implement logic for sharing read-only permissions
+            client_socket.send(fernet.encrypt(f"share||{friend_name}||read only".encode()))
+        elif clicked_button == 1:
+            print(f"Sharing read-write with friend: {friend_name}")
+            # TODO: Implement logic for sharing read-write permissions
+            client_socket.send(fernet.encrypt(f"share||{friend_name}||read write".encode()))
+
+        else:
+            print("Share canceled")
+
+    def remove_friend(self, friend_name):
+        if friend_name == NO_FRIENDS:
+            return
+        print(f"Removing friend: {friend_name}")
+        self.friends.remove(friend_name)
+        if self.friends:
+            index = self.friends_list_widget.currentRow()
+            self.friends_list_widget.takeItem(index)
+        else:
+            self.friends_list_widget.clear()
+            self.friends_list_widget.addItem(NO_FRIENDS)
+        client_socket.send(fernet.encrypt(f"remove_friend ||{friend_name}".encode()))
 
     def send_friend_request(self, user):
-        client_socket.send(fernet.encrypt(f"send_friend_request ||{user}".encode()))
-        client_socket.recv(1024)
-        print(f"Sent a friend request to {user}")
+        if user not in self.friends:
+            self.sent_requests.append(user)
+            client_socket.send(fernet.encrypt(f"send_friend_request ||{user}".encode()))
+            print(f"Sent a friend request to {user}")
+            response = fernet.decrypt(client_socket.recv(1024)).decode()
+        else:
+            response = "This user is already your friend"
+        return response
 
     def user_double_clicked(self, item):
         user = item.text()
-        dialog = QDialog()
-        dialog.setWindowTitle("Send Friend Request")
-        layout = QtWidgets.QVBoxLayout()
-        label = QLabel(f"Send {user} a friend request?")
-        layout.addWidget(label)
-        popup = QDialogButtonBox(QDialogButtonBox.Yes | QDialogButtonBox.No)
-        popup.accepted.connect(dialog.accept)
-        popup.rejected.connect(dialog.reject)
-        layout.addWidget(popup)
-        dialog.setLayout(layout)
-        result = dialog.exec_()
-        if result == QDialog.Accepted:
-            self.send_friend_request(user)
+        message_box = QMessageBox()
+        message_box.setWindowTitle("Send Friend Request")
+        message_box.setText(f"Send {user} a friend request?")
+
+        # Add buttons for Yes and No options
+        message_box.addButton(QMessageBox.Yes)
+        message_box.addButton(QMessageBox.No)
+
+        # Execute the message box and get the result
+        result = message_box.exec_()
+        if result == QMessageBox.Yes:
+            response = self.send_friend_request(user)
+            if response != "OK":
+                QMessageBox.warning(self, "Error", response)
 
     def add_friend(self, user):
         self.friends.append(user)
+        self.friends_list_widget.clear()
+        self.friends_list_widget.addItems(self.friends)
         client_socket.send(fernet.encrypt(f"add_friend {user}".encode()))
         client_socket.recv(1024)
         print(f"added {user}")
 
     def remove_friend_request(self, user):
-        index = self.friend_requests_list_widget.currentRow()
-        self.friend_requests_list_widget.takeItem(index)
+        self.friend_requests.remove(user)
+        if self.friend_requests:
+            index = self.friend_requests_list_widget.currentRow()
+            self.friend_requests_list_widget.takeItem(index)
+        else:
+            self.friend_requests_list_widget.clear()
+            self.friend_requests_list_widget.addItem(NO_FRIEND_REQUESTS)
         client_socket.send(fernet.encrypt(f"remove_friend_request ||{user}".encode()))
 
     def friend_request_double_clicked(self, item):
         user = item.text()
-        if user == "You don't have any friend requests!":
+        if user == NO_FRIEND_REQUESTS:
             return
         dialog = QtWidgets.QMessageBox()
         dialog.setWindowTitle("Add Friend")
@@ -536,7 +628,7 @@ class LoginWindow(QMainWindow, UiLogin):
         super().__init__(*args, **kwargs)
         self.setupUi(self)
         self.login_fail_label.hide()
-
+        self.setWindowTitle("Log In")
         disable_keys(self.username_input)
         disable_keys(self.password_input)
         self.login_button.clicked.connect(self.login)
@@ -553,6 +645,7 @@ class LoginWindow(QMainWindow, UiLogin):
         print(f"Password: {password}")
         # Send the username and password to the server for signup
         client_socket.send(fernet.encrypt(f"login {username} {hashlib.md5(password.encode()).hexdigest()}".encode()))
+
         # Receive the server's response
         response = fernet.decrypt(client_socket.recv(1024)).decode().strip()
 
@@ -600,7 +693,7 @@ class SignupWindow(QMainWindow, UiSignup):
         self.setupUi(self)
         self.confirm_fail_label.hide()
         self.signup_fail_label.hide()
-
+        self.setWindowTitle("Sign Up")
         disable_keys(self.username_input)
         disable_keys(self.password_input)
         disable_keys(self.confirm_password_input)
@@ -650,13 +743,30 @@ class SignupWindow(QMainWindow, UiSignup):
 
 
 if __name__ == "__main__":
-    # Create a new socket and connect to the server
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client_socket:
+    client_socket = None
+    try:
+        # Create a new socket and connect to the server
+        client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         client_socket.connect((SERVER_IP, PORT))
+        public_key, private_key = rsa.newkeys(1024)
+        public_partner = rsa.PublicKey.load_pkcs1(client_socket.recv(1024))
+        client_socket.send(public_key.save_pkcs1("PEM"))
+        # Receive the encrypted symmetric key from the server
+        encrypted_symmetric_key = client_socket.recv(1024)
+        # Decrypt the symmetric key using the client's private key
+        symmetric_key = rsa.decrypt(encrypted_symmetric_key, private_key)
+        # Create a Fernet instance with the symmetric key
+        fernet = Fernet(symmetric_key)
         app = QApplication(sys.argv)
         widget = QtWidgets.QStackedWidget()
         widget.addWidget(LoginWindow())
         widget.setFixedHeight(600)
         widget.setFixedWidth(460)
         widget.show()
+
         sys.exit(app.exec_())
+    except ConnectionRefusedError:
+        print("Server is closed")
+    finally:
+        if client_socket:
+            client_socket.close()
