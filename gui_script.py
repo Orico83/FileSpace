@@ -1,3 +1,5 @@
+# TODO handle changes in the shared read write on server, add upload file and folder to read write
+# TODO receive all shared folders
 import hashlib
 import os
 import shutil
@@ -11,7 +13,7 @@ from login_window import UiLogin
 from signup_window import UiSignup
 from PyQt5.QtWidgets import QApplication, QMainWindow, QLineEdit, QWidget, QFileSystemModel, QInputDialog, QMessageBox, \
     QPushButton
-from PyQt5 import QtCore, QtWidgets
+from PyQt5 import QtCore, QtWidgets, QtGui
 from PyQt5.QtCore import Qt, QFileSystemWatcher
 import sys
 from file_classes import File, Directory
@@ -19,15 +21,17 @@ from main_window import Ui_MainWindow
 
 SERVER_IP = '127.0.0.1'
 PORT = 8080
-FOLDER = r"C:\Users\orico\Desktop\FS"
+FOLDER = "C:/Users/orico/Desktop/FS/Folders"
+READ_ONLY_SHARES = "C:/Users/orico/Desktop/FS/Read Only"
+READ_WRITE_SHARES = "C:/Users/orico/Desktop/FS/Read and Write"
 CHUNK_SIZE = 4096
 KEYS_TO_DISABLE = [Qt.Key_Space, Qt.Key_Period, Qt.Key_Slash, Qt.Key_Comma, Qt.Key_Semicolon, Qt.Key_Colon, Qt.Key_Bar,
                    Qt.Key_Backslash, Qt.Key_BracketLeft, Qt.Key_BracketRight, Qt.Key_ParenLeft, Qt.Key_ParenRight,
-                   Qt.Key_BraceLeft, Qt.Key_BraceRight, Qt.Key_Apostrophe, Qt.Key_QuoteDbl]
+                   Qt.Key_BraceLeft, Qt.Key_BraceRight, Qt.Key_Apostrophe, Qt.Key_QuoteDbl, Qt.Key_Equal, Qt.Key_Plus,
+                   Qt.Key_Minus, Qt.Key_Percent]
 REFRESH_FREQUENCY = 5
 NO_FRIENDS = "No Friends Added"
 NO_FRIEND_REQUESTS = "No Friend Requests"
-
 
 
 def disable_keys(field):
@@ -53,16 +57,16 @@ def rename_item(item_path, new_name):
         QMessageBox.warning(widget, "Error", err.args[1])
 
 
-"""def create_fail_label(parent, text, geometry):
+def create_fail_label(parent, text, geometry):
     fail_label = QtWidgets.QLabel(parent)
-    fail_label.setGeometry(QtCore.QRect(geometry[0], geometry[1], geometry[2], geometry[3]))
+    fail_label.setGeometry(geometry)
     fail_label.setText(text)
     fail_label.hide()
     font = QtGui.QFont()
     font.setPointSize(11)
     fail_label.setFont(font)
     fail_label.setStyleSheet("color: rgb(255, 0, 0)")
-    return fail_label"""
+    return fail_label
 
 
 def open_file(item_path):
@@ -80,11 +84,15 @@ class MainWindow(QWidget, Ui_MainWindow):
         self.copied_item_path = None
         self.cut_item_path = None
         self.dir_path = dir_path
+        self.file_timestamps = {}
         self.directory_history = []  # List to store directory history
+        self.read_write_directory_history = [READ_WRITE_SHARES]
+        self.read_only_directory_history = [READ_ONLY_SHARES]
         self.users = []
         self.friends = []
         self.friend_requests = []
-        self.sent_requests = []
+        self.sharing_read_only = []
+        self.sharing_read_write = []
         self.setupUi(self)
         self.setWindowTitle("FileSpace")
         self.model = QFileSystemModel()
@@ -96,69 +104,106 @@ class MainWindow(QWidget, Ui_MainWindow):
         self.list_view.setViewMode(QtWidgets.QListView.IconMode)
         self.set_initial_directory()
         self.tabs.setCurrentIndex(0)
-        # self.refresh_users()
-        self.list_view.doubleClicked.connect(self.on_list_view_double_clicked)
+
         self.upload_files_button.clicked.connect(self.upload_files)  # Connect the upload button to the method
         self.upload_folders_button.clicked.connect(self.upload_folders)
-
+        self.list_view.doubleClicked.connect(self.on_list_view_double_clicked)
         self.list_view.setContextMenuPolicy(QtCore.Qt.CustomContextMenu)
-        self.list_view.customContextMenuRequested.connect(self.create_context_menu)
+        self.list_view.customContextMenuRequested.connect(lambda event: self.create_context_menu(event, self.list_view))
         self.go_back_button.hide()
         self.go_back_button.clicked.connect(self.go_back)
+        self.rw_go_back_button.hide()
+        self.rw_go_back_button.clicked.connect(self.rw_go_back)
+        self.r_go_back_button.hide()
+        self.r_go_back_button.clicked.connect(self.r_go_back)
 
         self.watcher = QFileSystemWatcher()
         self.watcher.addPath(self.dir_path)
-        self.file_timestamps = {}
+
         self.recursively_add_paths(self.dir_path)  # Add subdirectories recursively
         self.watcher.fileChanged.connect(self.file_changed)
-        # self.initiate_friends()
         self.friends_list_widget.itemDoubleClicked.connect(self.friend_double_clicked)
         self.friend_requests_list_widget.itemDoubleClicked.connect(self.friend_request_double_clicked)
-
+        self.sharing_read_write_list_widget.itemDoubleClicked.connect(self.sharing_to_double_clicked)
+        self.sharing_read_only_list_widget.itemDoubleClicked.connect(self.sharing_to_double_clicked)
         self.search_bar.textChanged.connect(self.search_users)
         self.search_results_list.itemDoubleClicked.connect(self.user_double_clicked)
+        self.read_only_model = QFileSystemModel()
+        self.read_only_model.setRootPath(READ_ONLY_SHARES)
+        self.read_only_list_view.setModel(self.read_only_model)
+        self.read_only_list_view.setRootIndex(self.read_only_model.index(READ_ONLY_SHARES))
+        self.read_only_list_view.doubleClicked.connect(self.on_read_only_list_view_double_clicked)
+        self.read_write_model = QFileSystemModel()
+        self.read_write_model.setRootPath(READ_WRITE_SHARES)
+        self.read_write_list_view.setModel(self.read_write_model)
+        self.read_write_list_view.setRootIndex(self.read_write_model.index(READ_WRITE_SHARES))
+        self.read_write_list_view.setContextMenuPolicy(QtCore.Qt.CustomContextMenu)
+        self.read_write_list_view.customContextMenuRequested.connect(
+            lambda event: self.create_context_menu(event, self.read_write_list_view))
+        self.read_write_list_view.doubleClicked.connect(self.on_read_write_list_view_double_clicked)
         refreshes_thread = threading.Thread(target=self.handle_refreshes)
         refreshes_thread.start()
+        receive_commands_thread = threading.Thread(target=self.handle_waiting_commands)
+        receive_commands_thread.start()
 
-    def closeEvent(self, event):
-        reply = QMessageBox.question(
-            self,
-            "Confirmation",
-            "Are you sure you want to exit?",
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.No
-        )
-        if reply == QMessageBox.Yes:
-            # Perform any necessary cleanup or save operations here
-            event.accept()
-        else:
-            event.ignore()
+        """    def create_file_system_model(self, list_view, path):
+                model = QFileSystemModel()
+                model.setRootPath(path)
+                list_view.setModel(model)
+                list_view.setRootIndex(model.index(path))
+                list_view.setIconSize(QtCore.QSize(32, 32))
+                list_view.setGridSize(QtCore.QSize(96, 96))
+                list_view.setViewMode(QtWidgets.QListView.IconMode)
+        
+                list_view.doubleClicked.connect(self.on_list_view_double_clicked)
+                list_view.setContextMenuPolicy(QtCore.Qt.CustomContextMenu)
+                list_view.customContextMenuRequested.connect(self.create_context_menu)"""
 
-    def send_message(self, message):
-        with self.lock:
-            client_socket.send(fernet.encrypt(message))
+    def handle_waiting_commands(self):
+        while not self.exit:
+            self.receive_commands()
+            time.sleep(REFRESH_FREQUENCY)
 
     def handle_refreshes(self):
         while not self.exit:
-            threading.Thread(target=self.refresh).start()
+            self.refresh()
             time.sleep(REFRESH_FREQUENCY)
+
+    def receive_commands(self):
+        try:
+            with self.lock:
+                # Send a message to the server to request waiting commands
+                client_socket.send(fernet.encrypt("request_commands".encode()))
+                commands = loads(fernet.decrypt(client_socket.recv(1024)))
+                print(commands)
+        except OSError:
+            self.exit = True
 
     def refresh(self):
         try:
             with self.lock:
                 client_socket.send(fernet.encrypt("refresh".encode()))
-                data = fernet.decrypt(client_socket.recv(1024)).decode()
+                data_len = fernet.decrypt(client_socket.recv(1024)).decode()
+                data_len = int(data_len.split(":")[1])
+                client_socket.send(fernet.encrypt("OK".encode()))
+                bytes_received = 0
+                encrypted_dir_data = b''
+                while bytes_received < data_len:
+                    chunk = client_socket.recv(CHUNK_SIZE)
+                    bytes_received += len(chunk)
+                    encrypted_dir_data += chunk
+                data = fernet.decrypt(encrypted_dir_data).decode()
                 self.users = data.split('||')[0].split(',')
-                print(self.users)
                 self.users.remove(os.path.basename(self.dir_path))
                 friends = data.split('||')[1].split(',')
                 friend_requests = data.split('||')[2].split(',')
+                sharing_read = data.split('||')[3].split(',')
+                sharing_rw = data.split('||')[4].split(',')
+                self.sharing_read_only = sharing_read if sharing_read != [''] else []
+                self.sharing_read_write = sharing_rw if sharing_rw != [''] else []
                 self.friends = friends if friends[0] else []
                 self.friend_requests = friend_requests if friend_requests[0] else []
                 self.friends_list_widget.clear()
-                # TODO delete the 2 lines below
-                print(self.friends)
-                print(self.friend_requests)
                 if not self.friends:
                     self.friends_list_widget.addItem(NO_FRIENDS)
                 else:
@@ -168,6 +213,14 @@ class MainWindow(QWidget, Ui_MainWindow):
                     self.friend_requests_list_widget.addItem(NO_FRIEND_REQUESTS)
                 else:
                     self.friend_requests_list_widget.addItems(self.friend_requests)
+                self.sharing_read_write_list_widget.clear()
+                """print(self.sharing_read_write)
+                print(self.sharing_read_only)"""
+                if self.sharing_read_write:
+                    self.sharing_read_write_list_widget.addItems(self.sharing_read_write)
+                self.sharing_read_only_list_widget.clear()
+                if self.sharing_read_only:
+                    self.sharing_read_only_list_widget.addItems(self.sharing_read_only)
 
         except OSError:
             self.exit = True
@@ -208,7 +261,12 @@ class MainWindow(QWidget, Ui_MainWindow):
     def share_friend(self, friend_name):
         # Create a Directory object to be shared
         directory = Directory(self.dir_path)
-
+        if friend_name in self.sharing_read_write:
+            self.change_permission(friend_name, "read_write")
+            return
+        elif friend_name in self.sharing_read_only:
+            self.change_permission(friend_name, "read")
+            return
         # Show a pop-up message box to ask for permissions
         message_box = QMessageBox()
         message_box.setWindowTitle("Permission Selection")
@@ -228,14 +286,73 @@ class MainWindow(QWidget, Ui_MainWindow):
         if clicked_button == 0:
             print(f"Sharing read-only with friend: {friend_name}")
             # TODO: Implement logic for sharing read-only permissions
-            client_socket.send(fernet.encrypt(f"share||{friend_name}||read only".encode()))
+            self.sharing_read_only.append(friend_name)
+            self.sharing_read_only_list_widget.clear()
+            self.sharing_read_only_list_widget.addItems(self.sharing_read_only)
+            client_socket.send(fernet.encrypt(f"share||{friend_name}||read".encode()))
         elif clicked_button == 1:
             print(f"Sharing read-write with friend: {friend_name}")
             # TODO: Implement logic for sharing read-write permissions
-            client_socket.send(fernet.encrypt(f"share||{friend_name}||read write".encode()))
+            self.sharing_read_write.append(friend_name)
+            self.sharing_read_write_list_widget.clear()
+            self.sharing_read_write_list_widget.addItems(self.sharing_read_write)
+            client_socket.send(fernet.encrypt(f"share||{friend_name}||read_write".encode()))
 
         else:
             print("Share canceled")
+
+    def change_permission(self, shared_user, current_perm):
+        message_box = QMessageBox()
+        message_box.setWindowTitle("Change Permission")
+        message_box.setText(f"{shared_user} currently has {current_perm} permissions.\nWould you like to change them?")
+        if current_perm == "read_write":
+            # Add buttons for read, write, and cancel options
+            read_button = QPushButton("Read Only")
+            message_box.addButton(read_button, QMessageBox.ButtonRole.AcceptRole)
+        elif current_perm == "read":
+            write_button = QPushButton("Read And Write")
+            message_box.addButton(write_button, QMessageBox.ButtonRole.AcceptRole)
+        remove_perms_button = QPushButton("Remove Permissions")
+        cancel_button = QPushButton("Cancel")
+        message_box.addButton(remove_perms_button, QMessageBox.ButtonRole.RejectRole)
+        message_box.addButton(cancel_button, QMessageBox.ButtonRole.RejectRole)
+        message_box.setDefaultButton(cancel_button)
+        # Execute the message box and get the selected button
+        clicked_button = message_box.exec_()
+        if clicked_button == 0:
+            if current_perm == "read_write":
+                self.sharing_read_write_list_widget.takeItem(self.sharing_read_write.index(shared_user))
+                self.sharing_read_write.remove(shared_user)
+                self.sharing_read_only.append(shared_user)
+                self.sharing_read_only_list_widget.addItem(shared_user)
+                client_socket.send(fernet.encrypt(f"share||{shared_user}||read".encode()))
+                print(f"Changed {shared_user}'s permissions from read and write to read only")
+            else:
+                self.sharing_read_only_list_widget.takeItem(self.sharing_read_only.index(shared_user))
+                self.sharing_read_only.remove(shared_user)
+                self.sharing_read_write.append(shared_user)
+                self.sharing_read_write_list_widget.addItem(shared_user)
+                client_socket.send(fernet.encrypt(f"share||{shared_user}||read_write".encode()))
+                print(f"Changed {shared_user}'s permissions from read only to read and write")
+
+        elif clicked_button == 1:
+            if current_perm == "read_write":
+                self.sharing_read_write_list_widget.takeItem(self.sharing_read_write.index(shared_user))
+                self.sharing_read_write.remove(shared_user)
+                client_socket.send(fernet.encrypt(f"share||{shared_user}||remove".encode()))
+                print(f"Removed permissions for {shared_user}")
+            else:
+                self.sharing_read_only_list_widget.takeItem(self.sharing_read_only.index(shared_user))
+                self.sharing_read_only.remove(shared_user)
+                client_socket.send(fernet.encrypt(f"share||{shared_user}||remove".encode()))
+                print(f"Removed permissions for {shared_user}")
+
+    def sharing_to_double_clicked(self, item):
+        user = item.text()
+        if user in self.sharing_read_write:
+            self.change_permission(user, "read_write")
+        else:
+            self.change_permission(user, "read")
 
     def remove_friend(self, friend_name):
         if friend_name == NO_FRIENDS:
@@ -368,6 +485,36 @@ class MainWindow(QWidget, Ui_MainWindow):
             file_path = self.model.filePath(index)
             open_file(file_path)
 
+    def on_read_write_list_view_double_clicked(self, index):
+        # Check if the selected index represents a directory
+        if self.read_write_model.isDir(index):
+            # Get the path of the double-clicked directory
+            directory_path = self.read_write_model.filePath(index)
+            # Set the root path of the model to the double-clicked directory
+            self.read_write_model.setRootPath(directory_path)
+            # Set the root index of the list view to the new root path
+            self.read_write_list_view.setRootIndex(self.read_write_model.index(directory_path))
+            self.rw_go_back_button.show()
+            self.read_write_directory_history.append(directory_path)
+        else:
+            file_path = self.read_write_model.filePath(index)
+            open_file(file_path)
+
+    def on_read_only_list_view_double_clicked(self, index):
+        # Check if the selected index represents a directory
+        if self.read_only_model.isDir(index):
+            # Get the path of the double-clicked directory
+            directory_path = self.read_only_model.filePath(index)
+            # Set the root path of the model to the double-clicked directory
+            self.read_only_model.setRootPath(directory_path)
+            # Set the root index of the list view to the new root path
+            self.read_only_list_view.setRootIndex(self.read_only_model.index(directory_path))
+            self.r_go_back_button.show()
+            self.read_only_directory_history.append(directory_path)
+        else:
+            file_path = self.read_only_model.filePath(index)
+            open_file(file_path)
+
     def go_back(self):
         if len(self.directory_history) >= 1:
             # Remove the current directory from the history
@@ -385,6 +532,40 @@ class MainWindow(QWidget, Ui_MainWindow):
         else:
             self.go_back_button.show()
 
+    def rw_go_back(self):
+        if len(self.read_write_directory_history) >= 1:
+            # Remove the current directory from the history
+            self.read_write_directory_history.pop()
+            # Get the previous directory path
+            parent_directory_path = self.read_write_directory_history[-1]
+            # Set the root path of the model to the parent directory
+            self.read_write_model.setRootPath(parent_directory_path)
+            # Set the root index of the list view to the new root path
+            self.read_write_list_view.setRootIndex(self.read_write_model.index(parent_directory_path))
+
+        # Show or hide the "Go Back" button based on the directory history
+        if len(self.read_write_directory_history) <= 1:
+            self.rw_go_back_button.hide()
+        else:
+            self.rw_go_back_button.show()
+
+    def r_go_back(self):
+        if len(self.read_only_directory_history) >= 1:
+            # Remove the current directory from the history
+            self.read_only_directory_history.pop()
+            # Get the previous directory path
+            parent_directory_path = self.read_only_directory_history[-1]
+            # Set the root path of the model to the parent directory
+            self.read_only_model.setRootPath(parent_directory_path)
+            # Set the root index of the list view to the new root path
+            self.read_only_list_view.setRootIndex(self.read_only_model.index(parent_directory_path))
+
+        # Show or hide the "Go Back" button based on the directory history
+        if len(self.read_only_directory_history) <= 1:
+            self.r_go_back_button.hide()
+        else:
+            self.r_go_back_button.show()
+
     def update_directory_history(self, directory_path):
         # Add the current directory path to the history
         self.directory_history.append(directory_path)
@@ -393,7 +574,6 @@ class MainWindow(QWidget, Ui_MainWindow):
         self.model.setRootPath(self.dir_path)
         self.list_view.setRootIndex(self.model.index(self.dir_path))
         self.directory_history.append(self.dir_path)
-        self.go_back_button.hide()
 
     def copy_files_or_folders(self, paths, destination_path):
         for path in paths:
@@ -408,9 +588,12 @@ class MainWindow(QWidget, Ui_MainWindow):
         # Refresh the file system view
         self.model.setRootPath(self.model.rootPath())
 
-    def create_context_menu(self, position):
+    def create_context_menu(self, position, list_view):
         menu = QtWidgets.QMenu()
-        selected_index = self.list_view.indexAt(position)
+        temp = self.model.rootPath()
+        if list_view == self.read_write_list_view:
+            self.model.setRootPath(self.read_write_model.rootPath())
+        selected_index = list_view.indexAt(position)
         if selected_index.isValid():
             # Get the selected item's path
             item_path = self.model.filePath(selected_index)
@@ -452,7 +635,8 @@ class MainWindow(QWidget, Ui_MainWindow):
             create_folder_action = new_menu.addAction("Create Folder")
             create_folder_action.triggered.connect(self.create_new_directory)
         # Show the context menu at the given position
-        menu.exec_(self.list_view.viewport().mapToGlobal(position))
+        menu.exec_(list_view.viewport().mapToGlobal(position))
+        self.model.setRootPath(temp)
 
     def copy_item(self, item_path):
         self.copied_item_path = item_path
@@ -497,6 +681,7 @@ class MainWindow(QWidget, Ui_MainWindow):
         self.model.setRootPath(self.model.rootPath())
 
     def delete_selected_item(self, item_path):
+        self.model.setRootPath(item_path)
         # Delete the item (file or folder)
         delete_item(item_path)
         # Refresh the file system view
@@ -507,6 +692,7 @@ class MainWindow(QWidget, Ui_MainWindow):
 
     def rename_selected_item(self, item_path):
         # Open a dialog to get the new name
+        self.model.setRootPath(item_path)
         new_name, ok = QInputDialog.getText(self, "Rename Item", "New Name:")
         if ok and new_name:
             if os.path.splitext(new_name)[-1] == '':
@@ -670,9 +856,12 @@ class LoginWindow(QMainWindow, UiLogin):
             folder = loads(dir_data)
             f = folder.create(os.path.join(FOLDER, folder.name))
             self.goto_files(f.path)
-        else:
+        elif response == "FAIL":
             print("Login Failed - Invalid username or password")
             self.login_fail_label.show()
+        else:
+            fail_label = create_fail_label(self, response, QtCore.QRect(150, 260, 285, 18))
+            fail_label.show()
 
     @staticmethod
     def goto_signup_screen():

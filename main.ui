@@ -29,7 +29,7 @@
       <enum>Qt::DefaultContextMenu</enum>
      </property>
      <property name="currentIndex">
-      <number>0</number>
+      <number>2</number>
      </property>
      <widget class="QWidget" name="myfolder_tab">
       <attribute name="title">
@@ -90,10 +90,10 @@
       <widget class="QListView" name="list_view">
        <property name="geometry">
         <rect>
-         <x>70</x>
-         <y>10</y>
-         <width>641</width>
-         <height>541</height>
+         <x>20</x>
+         <y>40</y>
+         <width>691</width>
+         <height>501</height>
         </rect>
        </property>
        <property name="acceptDrops">
@@ -124,6 +124,24 @@
         <enum>QListView::IconMode</enum>
        </property>
       </widget>
+      <widget class="QLabel" name="my_filespace_label">
+       <property name="geometry">
+        <rect>
+         <x>300</x>
+         <y>10</y>
+         <width>111</width>
+         <height>21</height>
+        </rect>
+       </property>
+       <property name="font">
+        <font>
+         <pointsize>14</pointsize>
+        </font>
+       </property>
+       <property name="text">
+        <string>My FileSpace</string>
+       </property>
+      </widget>
      </widget>
      <widget class="QWidget" name="friends_tab">
       <attribute name="title">
@@ -150,7 +168,7 @@
       <widget class="QLabel" name="friends_label">
        <property name="geometry">
         <rect>
-         <x>10</x>
+         <x>100</x>
          <y>3</y>
          <width>61</width>
          <height>21</height>
@@ -171,7 +189,7 @@
          <x>280</x>
          <y>30</y>
          <width>256</width>
-         <height>511</height>
+         <height>241</height>
         </rect>
        </property>
        <property name="font">
@@ -182,14 +200,20 @@
        <property name="contextMenuPolicy">
         <enum>Qt::DefaultContextMenu</enum>
        </property>
+       <property name="sizeAdjustPolicy">
+        <enum>QAbstractScrollArea::AdjustIgnored</enum>
+       </property>
        <property name="alternatingRowColors">
         <bool>true</bool>
+       </property>
+       <property name="resizeMode">
+        <enum>QListView::Fixed</enum>
        </property>
       </widget>
       <widget class="QLabel" name="friend_requests_label">
        <property name="geometry">
         <rect>
-         <x>290</x>
+         <x>330</x>
          <y>3</y>
          <width>141</width>
          <height>21</height>
@@ -210,7 +234,7 @@
          <x>550</x>
          <y>30</y>
          <width>256</width>
-         <height>511</height>
+         <height>241</height>
         </rect>
        </property>
        <property name="font">
@@ -253,6 +277,177 @@
         <string/>
        </property>
       </widget>
+      <widget class="QLabel" name="sharing_read_write_label">
+       <property name="geometry">
+        <rect>
+         <x>320</x>
+         <y>275</y>
+         <width>171</width>
+         <height>31</height>
+        </rect>
+       </property>
+       <property name="font">
+        <font>
+         <pointsize>14</pointsize>
+        </font>
+       </property>
+       <property name="text">
+        <string>Sharing Read-Write</string>
+       </property>
+      </widget>
+      <widget class="QListWidget" name="sharing_read_write_list_widget">
+       <property name="geometry">
+        <rect>
+         <x>280</x>
+         <y>310</y>
+         <width>256</width>
+         <height>231</height>
+        </rect>
+       </property>
+       <property name="font">
+        <font>
+         <pointsize>14</pointsize>
+        </font>
+       </property>
+       <property name="alternatingRowColors">
+        <bool>true</bool>
+       </property>
+      </widget>
+      <widget class="QListWidget" name="sharing_read_only_list_widget">
+       <property name="geometry">
+        <rect>
+         <x>550</x>
+         <y>310</y>
+         <width>256</width>
+         <height>231</height>
+        </rect>
+       </property>
+       <property name="font">
+        <font>
+         <pointsize>14</pointsize>
+        </font>
+       </property>
+       <property name="alternatingRowColors">
+        <bool>true</bool>
+       </property>
+      </widget>
+      <widget class="QLabel" name="sharing_read_only_label">
+       <property name="geometry">
+        <rect>
+         <x>590</x>
+         <y>275</y>
+         <width>161</width>
+         <height>31</height>
+        </rect>
+       </property>
+       <property name="font">
+        <font>
+         <pointsize>14</pointsize>
+        </font>
+       </property>
+       <property name="text">
+        <string>Sharing Read-Only</string>
+       </property>
+      </widget>
+     </widget>
+     <widget class="QWidget" name="shares_tab">
+      <attribute name="title">
+       <string>Shares</string>
+      </attribute>
+      <widget class="QListView" name="read_write_list_view">
+       <property name="geometry">
+        <rect>
+         <x>10</x>
+         <y>40</y>
+         <width>390</width>
+         <height>500</height>
+        </rect>
+       </property>
+       <property name="viewMode">
+        <enum>QListView::IconMode</enum>
+       </property>
+      </widget>
+      <widget class="QLabel" name="read_write_label">
+       <property name="geometry">
+        <rect>
+         <x>140</x>
+         <y>5</y>
+         <width>141</width>
+         <height>31</height>
+        </rect>
+       </property>
+       <property name="font">
+        <font>
+         <pointsize>14</pointsize>
+        </font>
+       </property>
+       <property name="text">
+        <string>Read And Write</string>
+       </property>
+      </widget>
+      <widget class="QListView" name="read_only_list_view">
+       <property name="geometry">
+        <rect>
+         <x>410</x>
+         <y>40</y>
+         <width>400</width>
+         <height>500</height>
+        </rect>
+       </property>
+       <property name="viewMode">
+        <enum>QListView::IconMode</enum>
+       </property>
+      </widget>
+      <widget class="QLabel" name="read_only_label">
+       <property name="geometry">
+        <rect>
+         <x>560</x>
+         <y>5</y>
+         <width>91</width>
+         <height>31</height>
+        </rect>
+       </property>
+       <property name="font">
+        <font>
+         <pointsize>14</pointsize>
+        </font>
+       </property>
+       <property name="text">
+        <string>Read Only</string>
+       </property>
+      </widget>
+      <widget class="QPushButton" name="rw_go_back_button">
+       <property name="geometry">
+        <rect>
+         <x>10</x>
+         <y>10</y>
+         <width>61</width>
+         <height>23</height>
+        </rect>
+       </property>
+       <property name="text">
+        <string>Back</string>
+       </property>
+      </widget>
+      <widget class="QPushButton" name="r_go_back_button">
+       <property name="geometry">
+        <rect>
+         <x>410</x>
+         <y>10</y>
+         <width>61</width>
+         <height>23</height>
+        </rect>
+       </property>
+       <property name="text">
+        <string>Back</string>
+       </property>
+      </widget>
+      <zorder>read_write_label</zorder>
+      <zorder>read_write_list_view</zorder>
+      <zorder>read_only_list_view</zorder>
+      <zorder>read_only_label</zorder>
+      <zorder>rw_go_back_button</zorder>
+      <zorder>r_go_back_button</zorder>
      </widget>
     </widget>
    </item>

@@ -1,3 +1,5 @@
+import socket
+
 from cryptography.fernet import Fernet, InvalidToken
 import rsa
 import os
@@ -20,6 +22,7 @@ database_config = {
     "database": "test"
 }
 username_locks = {}
+connected_users = []
 
 
 class ClientThread(threading.Thread):
@@ -48,7 +51,10 @@ class ClientThread(threading.Thread):
         try:
             while True:
                 # Receive the command from the client (login or signup)
-                data = fernet.decrypt(self.client_socket.recv(1024)).decode().strip()
+                try:
+                    data = fernet.decrypt(self.client_socket.recv(1024)).decode().strip()
+                except OSError:
+                    break
                 command = data.split()[0]
                 print(command)
 
@@ -65,12 +71,16 @@ class ClientThread(threading.Thread):
                                          (self.username, password))
                     result = mysql_cursor.fetchone()
                     if result:
-                        self.client_socket.send(fernet.encrypt("OK".encode()))
-                        self.folder_path = os.path.join(FOLDER, self.username)
-                        self.friends = [] if result[3] is None else result[3].split(',')
-                        self.friend_requests = [] if result[4] is None else result[4].split(',')
-                        self.handle_commands(mysql_connection,
-                                             mysql_cursor)  # Call a method to handle subsequent commands
+                        if self.username in connected_users:
+                            self.client_socket.send(fernet.encrypt("User already connected".encode()))
+                        else:
+                            connected_users.append(self.username)
+                            self.client_socket.send(fernet.encrypt("OK".encode()))
+                            self.folder_path = os.path.join(FOLDER, self.username)
+                            self.friends = [] if result[3] is None else result[3].split(',')
+                            self.friend_requests = [] if result[4] is None else result[4].split(',')
+                            self.handle_commands(mysql_connection,
+                                                 mysql_cursor)  # Call a method to handle subsequent commands
 
                     else:
                         self.client_socket.send(fernet.encrypt("FAIL".encode()))
@@ -100,14 +110,19 @@ class ClientThread(threading.Thread):
             if mysql_connection is not None:
                 mysql_connection.close()
             self.client_socket.close()
+            connected_users.remove(self.username)
             print(f"Connection from {self.client_address} closed")
 
     def handle_commands(self, mysql_connection, mysql_cursor):
-        # Set the lock for the username
-        self.username_lock = username_locks.setdefault(self.username, threading.Lock())
         while True:
             # Receive the command from the client
-            data = fernet.decrypt(self.client_socket.recv(1024)).decode()
+            try:
+                data = fernet.decrypt(self.client_socket.recv(1024)).decode()
+            except (InvalidToken, ConnectionError):
+                self.client_socket.close()
+                connected_users.remove(self.username)
+                print(f"Connection from {self.client_address} closed")
+                break
 
             if not data:
                 break  # Exit the loop if no more data is received
@@ -129,20 +144,20 @@ class ClientThread(threading.Thread):
                 self.client_socket.send(fernet.encrypt(dumps(self.friends)))
             elif data.startswith("delete_item"):
                 item_path = os.path.join(FOLDER, data.split("||")[1].strip())
-                with self.username_lock:
+                with self.lock:
                     delete_item(item_path)
                 print(f"Deleted {item_path}")
             elif data.startswith("rename_item"):
                 item_path = os.path.join(FOLDER, data.split("||")[1].strip())
                 new_name = data.split("||")[-1].strip()
-                with self.username_lock:
+                with self.lock:
                     rename_item(item_path, new_name)
                 print(f"Renamed {item_path} to {new_name}")
             elif data.startswith("create_file"):
                 new_file_path = os.path.join(FOLDER, data.split("||")[1].strip())
                 if os.path.exists(new_file_path):
                     return
-                with self.username_lock:
+                with self.lock:
                     # Create the new file
                     with open(new_file_path, 'w'):
                         pass  # Do nothing, just create an empty file
@@ -164,7 +179,7 @@ class ClientThread(threading.Thread):
                 dir_data = fernet.decrypt(encrypted_dir_data)
                 directory = loads(dir_data)
                 location = os.path.join(FOLDER, data.split("||")[2].strip())
-                with self.username_lock:
+                with self.lock:
                     directory.create(location)
                 print(f"Folder {location} uploaded")
                 self.client_socket.send(fernet.encrypt("OK".encode()))
@@ -181,7 +196,7 @@ class ClientThread(threading.Thread):
                 file_data = fernet.decrypt(encrypted_file_data)
                 file = loads(file_data)
                 file_path = os.path.join(FOLDER, data.split("||")[2].strip())
-                with self.username_lock:
+                with self.lock:
                     file.create(file_path)
                 self.client_socket.send(fernet.encrypt("OK".encode()))
                 print(f"File {file_path} uploaded")
@@ -189,7 +204,7 @@ class ClientThread(threading.Thread):
             elif data.startswith("copy"):
                 copied_item_path = os.path.join(FOLDER, data.split("||")[1])
                 destination_path = os.path.join(FOLDER, data.split("||")[2])
-                with self.username_lock:
+                with self.lock:
                     # Copy the file or folder
                     if os.path.isfile(copied_item_path):
                         try:
@@ -209,7 +224,7 @@ class ClientThread(threading.Thread):
             elif data.startswith("move"):
                 cut_item_path = os.path.join(FOLDER, data.split("||")[1])
                 destination_path = os.path.join(FOLDER, data.split("||")[2])
-                with self.username_lock:
+                with self.lock:
                     try:
                         # Move the file or folder
                         shutil.move(cut_item_path, destination_path)
@@ -229,7 +244,7 @@ class ClientThread(threading.Thread):
                     encrypted_file_data += chunk
                 file_data = fernet.decrypt(encrypted_file_data)
                 # Acquire the lock before opening the file and writing to it
-                with self.username_lock:
+                with self.lock:
                     with open(file_path, "wb") as f:
                         f.write(file_data)
                 self.client_socket.send(fernet.encrypt("OK".encode()))
@@ -250,8 +265,16 @@ class ClientThread(threading.Thread):
                         self.friend_requests = [] if row[1] is None else row[1].split(',')
                         friends = ','.join(self.friends)
                         friend_requests = ','.join(self.friend_requests)
-                        self.client_socket.send(fernet.encrypt(f"{updated_users}||"
-                                                               f"{friends}||{friend_requests}".encode()))
+                        sharing_read_only = ','.join(get_sharing_read_only(self.username))
+                        sharing_read_write = ','.join(get_sharing_read_write(self.username))
+                        print(sharing_read_write)
+                        shared_read_only = ','.join(get_shared_read_only(self.username))
+                        shared_read_write = ','.join(get_shared_read_write(self.username))
+                        message = fernet.encrypt(f"{updated_users}||{friends}||{friend_requests}||{sharing_read_only}||"
+                                                 f"{sharing_read_write}||{shared_read_only}||{shared_read_write}".encode())
+                        self.client_socket.send(fernet.encrypt(f"size:{len(message)}".encode()))
+                        self.client_socket.recv(1024)
+                        self.client_socket.send(message)
                         print(f"Sent users, friends and friend requests to client: {self.username}")
                     except Exception as error:
                         print(error)
@@ -308,9 +331,14 @@ class ClientThread(threading.Thread):
                 mysql_connection.commit()
                 print(f"{self.username} and {friend} are no longer friends")
             elif data.startswith("share"):
-                share_to = data.split("||")[1]
+                shared_user = data.split("||")[1]
                 permissions = data.split("||")[2]
-                print(f"{self.username} has shared his folder with {share_to} with {permissions} permissions")
+                if shared_user in get_users_user_is_sharing_with(self.username):
+                    remove_row(self.username, shared_user)
+                if permissions != "remove":
+                    insert_user_sharing(self.username, shared_user, permissions)
+                print(f"{self.username} has shared his folder with {shared_user} with {permissions} permissions")
+                print(f"{self.username} is currently sharing to {get_users_user_is_sharing_with(self.username)}")
             else:
                 self.client_socket.send(fernet.encrypt("Invalid command".encode()))
 
@@ -330,3 +358,155 @@ def rename_item(item_path, new_name):
         os.rename(item_path, new_path)
     except Exception as err:
         print(err.args[1])
+
+
+def get_users_user_is_sharing_with(username):
+    try:
+        mysql_connection = mysql.connector.connect(**database_config)
+        mysql_cursor = mysql_connection.cursor()
+        query = "SELECT shared_user FROM users_sharing WHERE sharing_user = %s"
+        values = (username,)
+        mysql_cursor.execute(query, values)
+        rows = mysql_cursor.fetchall()
+        mysql_connection.close()
+        users_list = []
+        for row in rows:
+            users_list.append(row[0])
+        return users_list
+    except mysql.connector.Error as error:
+        print(f"Error retrieving users {username} is sharing with: {error}")
+
+
+def get_users_sharing_with_user(username):
+    try:
+        mysql_connection = mysql.connector.connect(**database_config)
+        mysql_cursor = mysql_connection.cursor()
+        query = "SELECT sharing_user, permission FROM users_sharing WHERE shared_user = %s"
+        values = (username,)
+        mysql_cursor.execute(query, values)
+        rows = mysql_cursor.fetchall()
+        mysql_connection.close()
+        users_list = []
+        for row in rows:
+            users_list.append(row[0])
+        return users_list
+    except mysql.connector.Error as error:
+        print(f"Error retrieving users sharing with {username}: {error}")
+
+
+def insert_user_sharing(sharing_user, shared_user, permission):
+    try:
+        # Connect to the database
+        mysql_connection = mysql.connector.connect(**database_config)
+        mysql_cursor = mysql_connection.cursor()
+
+        query = "INSERT INTO users_sharing (sharing_user, shared_user, permission) VALUES (%s, %s, %s)"
+        values = (sharing_user, shared_user, permission)
+        mysql_cursor.execute(query, values)
+        mysql_connection.commit()
+        mysql_connection.close()
+        print("User sharing information inserted successfully.")
+        return True
+
+    except mysql.connector.Error as error:
+        print(f"Error inserting user sharing information: {error}")
+
+
+def remove_row(sharing_user, shared_user):
+    # Establish a connection to the MySQL server
+    mysql_connection = mysql.connector.connect(**database_config)
+    mysql_cursor = mysql_connection.cursor()
+    try:
+        # Create a cursor object to execute SQL queries
+        mysql_cursor = mysql_connection.cursor()
+
+        # Prepare the DELETE statement
+        delete_query = "DELETE FROM users_sharing WHERE sharing_user = %s AND shared_user = %s"
+
+        # Execute the DELETE statement with the username as a parameter
+        mysql_cursor.execute(delete_query, (sharing_user, shared_user))
+
+        # Commit the changes to the database
+        mysql_connection.commit()
+
+        # Print a message to indicate successful deletion
+        print("Row deleted successfully")
+
+    except mysql.connector.Error as error:
+        # Handle any potential errors
+        print(f"Error deleting row: {error}")
+
+    finally:
+        # Close the cursor and connection
+        mysql_cursor.close()
+        mysql_connection.close()
+
+
+def get_permissions(sharing_user, shared_user):
+    # Establish a connection to the MySQL server
+    mysql_connection = mysql.connector.connect(**database_config)
+    mysql_cursor = mysql_connection.cursor()
+    try:
+        # Create a cursor object to execute SQL queries
+        mysql_cursor = mysql_connection.cursor()
+
+        # Prepare the SELECT statement
+        select_query = "SELECT permission FROM users_sharing WHERE sharing_user = %s AND shared_user = %s"
+
+        # Execute the SELECT statement with the sharing_user and shared_user as parameters
+        mysql_cursor.execute(select_query, (sharing_user, shared_user))
+
+        # Fetch the first row returned by the query
+        row = mysql_cursor.fetchone()
+
+        if row:
+            # Return the value of the 'permissions' column
+            return row[0]
+        else:
+            # Return a default value if no matching row is found
+            return None
+
+    except mysql.connector.Error as error:
+        # Handle any potential errors
+        print(f"Error retrieving permissions: {error}")
+
+    finally:
+        # Close the cursor and connection
+        mysql_cursor.close()
+        mysql_connection.close()
+
+
+def get_sharing_read_only(username):
+    sharing_read_only = []
+    users = get_users_user_is_sharing_with(username)
+    for shared_user in users:
+        if get_permissions(username, shared_user) == "read":
+            sharing_read_only.append(shared_user)
+    return sharing_read_only
+
+
+def get_sharing_read_write(username):
+    sharing_read_write = []
+    users = get_users_user_is_sharing_with(username)
+    for shared_user in users:
+        if get_permissions(username, shared_user) == "read_write":
+            sharing_read_write.append(shared_user)
+    return sharing_read_write
+
+
+def get_shared_read_only(username):
+    shared_read_only = []
+    users = get_users_sharing_with_user(username)
+    for sharing_user in users:
+        if get_permissions(sharing_user, username) == "read":
+            shared_read_only.append(sharing_user)
+    return shared_read_only
+
+
+def get_shared_read_write(username):
+    shared_read_write = []
+    users = get_users_user_is_sharing_with(username)
+    for sharing_user in users:
+        if get_permissions(sharing_user, username) == "read_write":
+            shared_read_write.append(sharing_user)
+    return shared_read_write
