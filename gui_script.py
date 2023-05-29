@@ -1,7 +1,6 @@
-# TODO handle changes in the shared read write on server, add upload file and folder to read write
-# TODO receive all shared folders
 import hashlib
 import os
+import pathlib
 import shutil
 import socket
 import threading
@@ -84,15 +83,22 @@ class MainWindow(QWidget, Ui_MainWindow):
         self.copied_item_path = None
         self.cut_item_path = None
         self.dir_path = dir_path
+        self.username = os.path.basename(dir_path)
+        self.read_write_path = os.path.join(READ_WRITE_SHARES, self.username)
+        self.read_only_path = os.path.join(READ_ONLY_SHARES, self.username)
         self.file_timestamps = {}
         self.directory_history = []  # List to store directory history
-        self.read_write_directory_history = [READ_WRITE_SHARES]
-        self.read_only_directory_history = [READ_ONLY_SHARES]
+        self.read_write_directory_history = [self.read_write_path]
+        self.read_only_directory_history = [self.read_only_path]
         self.users = []
         self.friends = []
         self.friend_requests = []
         self.sharing_read_only = []
         self.sharing_read_write = []
+        self.shared_read_only = []
+        self.shared_read_write = []
+        os.makedirs(self.read_only_path, exist_ok=True)
+        os.makedirs(self.read_write_path, exist_ok=True)
         self.setupUi(self)
         self.setWindowTitle("FileSpace")
         self.model = QFileSystemModel()
@@ -104,7 +110,6 @@ class MainWindow(QWidget, Ui_MainWindow):
         self.list_view.setViewMode(QtWidgets.QListView.IconMode)
         self.set_initial_directory()
         self.tabs.setCurrentIndex(0)
-
         self.upload_files_button.clicked.connect(self.upload_files)  # Connect the upload button to the method
         self.upload_folders_button.clicked.connect(self.upload_folders)
         self.list_view.doubleClicked.connect(self.on_list_view_double_clicked)
@@ -128,36 +133,52 @@ class MainWindow(QWidget, Ui_MainWindow):
         self.sharing_read_only_list_widget.itemDoubleClicked.connect(self.sharing_to_double_clicked)
         self.search_bar.textChanged.connect(self.search_users)
         self.search_results_list.itemDoubleClicked.connect(self.user_double_clicked)
-        self.read_only_model = QFileSystemModel()
-        self.read_only_model.setRootPath(READ_ONLY_SHARES)
-        self.read_only_list_view.setModel(self.read_only_model)
-        self.read_only_list_view.setRootIndex(self.read_only_model.index(READ_ONLY_SHARES))
-        self.read_only_list_view.doubleClicked.connect(self.on_read_only_list_view_double_clicked)
-        self.read_write_model = QFileSystemModel()
-        self.read_write_model.setRootPath(READ_WRITE_SHARES)
-        self.read_write_list_view.setModel(self.read_write_model)
-        self.read_write_list_view.setRootIndex(self.read_write_model.index(READ_WRITE_SHARES))
-        self.read_write_list_view.setContextMenuPolicy(QtCore.Qt.CustomContextMenu)
-        self.read_write_list_view.customContextMenuRequested.connect(
-            lambda event: self.create_context_menu(event, self.read_write_list_view))
-        self.read_write_list_view.doubleClicked.connect(self.on_read_write_list_view_double_clicked)
         refreshes_thread = threading.Thread(target=self.handle_refreshes)
         refreshes_thread.start()
         receive_commands_thread = threading.Thread(target=self.handle_waiting_commands)
         receive_commands_thread.start()
+        self.get_shared_folders()
+        self.read_only_model = QFileSystemModel()
+        self.read_only_model.setRootPath(self.read_only_path)
+        self.read_only_list_view.setModel(self.read_only_model)
+        self.read_only_list_view.setRootIndex(self.read_only_model.index(self.read_only_path))
+        self.read_only_list_view.doubleClicked.connect(self.on_read_only_list_view_double_clicked)
+        self.read_write_model = QFileSystemModel()
+        self.read_write_model.setRootPath(self.read_write_path)
+        self.read_write_list_view.setModel(self.read_write_model)
+        self.read_write_list_view.setRootIndex(self.read_write_model.index(self.read_write_path))
+        self.read_write_list_view.setContextMenuPolicy(QtCore.Qt.CustomContextMenu)
+        self.read_write_list_view.customContextMenuRequested.connect(
+            lambda event: self.create_context_menu(event, self.read_write_list_view))
+        self.read_write_list_view.doubleClicked.connect(self.on_read_write_list_view_double_clicked)
 
-        """    def create_file_system_model(self, list_view, path):
-                model = QFileSystemModel()
-                model.setRootPath(path)
-                list_view.setModel(model)
-                list_view.setRootIndex(model.index(path))
-                list_view.setIconSize(QtCore.QSize(32, 32))
-                list_view.setGridSize(QtCore.QSize(96, 96))
-                list_view.setViewMode(QtWidgets.QListView.IconMode)
-        
-                list_view.doubleClicked.connect(self.on_list_view_double_clicked)
-                list_view.setContextMenuPolicy(QtCore.Qt.CustomContextMenu)
-                list_view.customContextMenuRequested.connect(self.create_context_menu)"""
+    def get_shared_folders(self):
+        with self.lock:
+            client_socket.send(fernet.encrypt("get_shared_folders".encode()))
+            data = fernet.decrypt(client_socket.recv(1024)).decode()
+            print(self.shared_read_write)
+            print(self.shared_read_only)
+            while data != "STOP":
+                data_len = int(data.split(":")[1])
+                client_socket.send(fernet.encrypt("OK".encode()))
+                # Receive the directory data
+                bytes_received = 0
+                encrypted_dir_data = b''
+                while bytes_received < data_len:
+                    chunk = client_socket.recv(CHUNK_SIZE)
+                    bytes_received += len(chunk)
+                    encrypted_dir_data += chunk
+                # Decrypt the directory data
+                dir_data = fernet.decrypt(encrypted_dir_data)
+                folder = loads(dir_data)
+                if folder.name in self.shared_read_write:
+                    folder.create(os.path.join(self.read_write_path, folder.name))
+                    client_socket.send(fernet.encrypt("OK".encode()))
+                    data = fernet.decrypt(client_socket.recv(1024)).decode()
+                elif folder.name in self.shared_read_only:
+                    folder.create(os.path.join(self.read_only_path, folder.name))
+                    client_socket.send(fernet.encrypt("OK".encode()))
+                    data = fernet.decrypt(client_socket.recv(1024)).decode()
 
     def handle_waiting_commands(self):
         while not self.exit:
@@ -174,16 +195,123 @@ class MainWindow(QWidget, Ui_MainWindow):
             with self.lock:
                 # Send a message to the server to request waiting commands
                 client_socket.send(fernet.encrypt("request_commands".encode()))
+                print(1)
                 commands = loads(fernet.decrypt(client_socket.recv(1024)))
-                print(commands)
-        except OSError:
+                print(2)
+                for command in commands:
+                    if command.startswith("delete_item"):
+                        rel_path = command.split("||")[1].strip()
+                        if pathlib.Path(rel_path).parts[0] == self.username:
+                            item_path = os.path.join(FOLDER, rel_path)
+                        else:
+                            if pathlib.Path(rel_path).parts[0] in self.shared_read_write:
+                                item_path = os.path.join(self.read_write_path, rel_path)
+                            else:
+                                item_path = os.path.join(self.read_only_path, rel_path)
+                        delete_item(item_path)
+                        print(f"Deleted {item_path}")
+                    elif command.startswith("rename_item"):
+                        rel_path = command.split("||")[1].strip()
+                        print(os.path.join(self.read_write_path, rel_path))
+                        if pathlib.Path(rel_path).parts[0] == self.username:
+                            item_path = os.path.join(FOLDER, rel_path)
+                        else:
+                            if pathlib.Path(rel_path).parts[0] in self.shared_read_write:
+                                item_path = os.path.join(self.read_write_path, rel_path)
+                            else:
+                                item_path = os.path.join(self.read_only_path, rel_path)
+                        new_name = command.split("||")[-1].strip()
+
+                        rename_item(item_path, new_name)
+                        print(f"Renamed {item_path} to {new_name}")
+                    elif command.startswith("create_file"):
+                        rel_path = command.split("||")[1].strip()
+                        if pathlib.Path(rel_path).parts[0] == self.username:
+                            new_file_path = os.path.join(FOLDER, rel_path)
+                        else:
+                            if pathlib.Path(rel_path).parts[0] in self.shared_read_write:
+                                new_file_path = os.path.join(self.read_write_path, rel_path)
+                            else:
+                                new_file_path = os.path.join(self.read_only_path, rel_path)
+                        if os.path.exists(new_file_path):
+                            return
+                            # Create the new file
+                        with open(new_file_path, 'w'):
+                            pass  # Do nothing, just create an empty file
+                        print(f"File {new_file_path} created")
+                    elif command.startswith("create_folder"):
+                        rel_path = command.split("||")[1].strip()
+                        if pathlib.Path(rel_path).parts[0] == self.username:
+                            new_dir_path = os.path.join(FOLDER, rel_path)
+                        else:
+                            if pathlib.Path(rel_path).parts[0] in self.shared_read_write:
+                                new_dir_path = os.path.join(self.read_write_path, rel_path)
+                            else:
+                                new_dir_path = os.path.join(self.read_only_path, rel_path)
+                        os.makedirs(new_dir_path, exist_ok=True)
+                        print(f"Folder {new_dir_path} created")
+                    elif command.startswith("copy"):
+                        rel_copied_item_path = command.split("||")[1]
+                        rel_destination_path = command.split("||")[2]
+                        if pathlib.Path(rel_copied_item_path).parts[0] == self.username:
+                            copied_item_path = os.path.join(FOLDER, rel_copied_item_path)
+                            destination_path = os.path.join(FOLDER, rel_destination_path)
+                        else:
+                            if pathlib.Path(rel_copied_item_path).parts[0] in self.shared_read_write:
+                                copied_item_path = os.path.join(self.read_write_path, rel_copied_item_path)
+                                destination_path = os.path.join(self.read_write_path, rel_destination_path)
+                            else:
+                                copied_item_path = os.path.join(self.read_only_path, rel_copied_item_path)
+                                destination_path = os.path.join(self.read_only_path, rel_destination_path)
+
+                        # Copy the file or folder
+                        if os.path.isfile(copied_item_path):
+                            try:
+                                # Copy a file
+                                shutil.copy2(copied_item_path, destination_path)
+                                print(f"Copied file {copied_item_path} to {destination_path}")
+                            except shutil.SameFileError:
+                                pass
+                        elif os.path.isdir(copied_item_path):
+                            try:
+                                # Copy a folder
+                                shutil.copytree(copied_item_path,
+                                                os.path.join(destination_path, os.path.basename(copied_item_path)))
+                                print(f"Copied folder {copied_item_path} to {destination_path}")
+                            except FileExistsError:
+                                pass
+
+                    elif command.startswith("move"):
+                        rel_cut_item_path = command.split("||")[1]
+                        rel_destination_path = command.split("||")[2]
+                        if pathlib.Path(rel_cut_item_path).parts[0] == self.username:
+                            cut_item_path = os.path.join(FOLDER, rel_cut_item_path)
+                            destination_path = os.path.join(FOLDER, rel_destination_path)
+                        else:
+                            if pathlib.Path(rel_cut_item_path).parts[0] in self.shared_read_write:
+                                cut_item_path = os.path.join(self.read_write_path, rel_cut_item_path)
+                                destination_path = os.path.join(self.read_write_path, rel_destination_path)
+                            else:
+                                cut_item_path = os.path.join(self.read_only_path, rel_cut_item_path)
+                                destination_path = os.path.join(self.read_only_path, rel_destination_path)
+                        try:
+                            # Move the file or folder
+                            shutil.move(cut_item_path, destination_path)
+                            print(f"Moved {cut_item_path} to {destination_path}")
+                        except shutil.Error:
+                            pass
+                print(f"commands:{commands}")
+        except OSError as err:
+            print(err)
             self.exit = True
 
     def refresh(self):
         try:
             with self.lock:
+                print(5)
                 client_socket.send(fernet.encrypt("refresh".encode()))
                 data_len = fernet.decrypt(client_socket.recv(1024)).decode()
+                print(6)
                 data_len = int(data_len.split(":")[1])
                 client_socket.send(fernet.encrypt("OK".encode()))
                 bytes_received = 0
@@ -195,12 +323,17 @@ class MainWindow(QWidget, Ui_MainWindow):
                 data = fernet.decrypt(encrypted_dir_data).decode()
                 self.users = data.split('||')[0].split(',')
                 self.users.remove(os.path.basename(self.dir_path))
+                print(7)
                 friends = data.split('||')[1].split(',')
                 friend_requests = data.split('||')[2].split(',')
                 sharing_read = data.split('||')[3].split(',')
                 sharing_rw = data.split('||')[4].split(',')
                 self.sharing_read_only = sharing_read if sharing_read != [''] else []
                 self.sharing_read_write = sharing_rw if sharing_rw != [''] else []
+                shared_read = data.split('||')[5].split(',')
+                shared_rw = data.split('||')[6].split(',')
+                self.shared_read_only = shared_read if shared_read != [''] else []
+                self.shared_read_write = shared_rw if shared_rw != [''] else []
                 self.friends = friends if friends[0] else []
                 self.friend_requests = friend_requests if friend_requests[0] else []
                 self.friends_list_widget.clear()
@@ -214,13 +347,23 @@ class MainWindow(QWidget, Ui_MainWindow):
                 else:
                     self.friend_requests_list_widget.addItems(self.friend_requests)
                 self.sharing_read_write_list_widget.clear()
-                """print(self.sharing_read_write)
-                print(self.sharing_read_only)"""
                 if self.sharing_read_write:
                     self.sharing_read_write_list_widget.addItems(self.sharing_read_write)
                 self.sharing_read_only_list_widget.clear()
                 if self.sharing_read_only:
                     self.sharing_read_only_list_widget.addItems(self.sharing_read_only)
+                for folder in os.listdir(self.read_write_path):
+                    if folder in self.shared_read_only:
+                        f = Directory(os.path.join(self.read_write_path, folder))
+                        f.change_path(os.path.join(self.read_only_path, folder))
+                    elif folder not in self.shared_read_write:
+                        shutil.rmtree(os.path.join(self.read_write_path, folder))
+                for folder in os.listdir(self.read_only_path):
+                    if folder in self.shared_read_write:
+                        f = Directory(os.path.join(self.read_only_path, folder))
+                        f.change_path(os.path.join(self.read_write_path, folder))
+                    elif folder not in self.shared_read_only:
+                        shutil.rmtree(os.path.join(self.read_only_path, folder))
 
         except OSError:
             self.exit = True
@@ -665,14 +808,29 @@ class MainWindow(QWidget, Ui_MainWindow):
                 except FileExistsError:
                     ok = False
             if ok:
-                client_socket.send(fernet.encrypt(f"copy ||{os.path.relpath(self.copied_item_path, FOLDER)}||"
-                                                  f"{os.path.relpath(destination_path, FOLDER)}".encode()))
+                if FOLDER in self.copied_item_path:
+                    rel_copied_item_path = os.path.relpath(self.copied_item_path, FOLDER)
+                else:
+                    rel_copied_item_path = os.path.relpath(self.copied_item_path, self.read_write_path)
+                if FOLDER in destination_path:
+                    rel_des_item_path = os.path.relpath(destination_path, FOLDER)
+                else:
+                    rel_des_item_path = os.path.relpath(destination_path, self.read_write_path)
+                client_socket.send(fernet.encrypt(f"copy ||{rel_copied_item_path}||"
+                                                  f"{rel_des_item_path}".encode()))
         elif self.cut_item_path:
             try:
                 # Move the file or folder
                 shutil.move(self.cut_item_path, destination_path)
-                client_socket.send(fernet.encrypt(f"move ||{os.path.relpath(self.cut_item_path, FOLDER)}||"
-                                                  f"{os.path.relpath(destination_path, FOLDER)}".encode()))
+                if FOLDER in self.cut_item_path:
+                    rel_cut_item_path = os.path.relpath(self.cut_item_path, FOLDER)
+                else:
+                    rel_cut_item_path = os.path.relpath(self.cut_item_path, self.read_write_path)
+                if FOLDER in destination_path:
+                    rel_des_item_path = os.path.relpath(destination_path, FOLDER)
+                else:
+                    rel_des_item_path = os.path.relpath(destination_path, self.read_write_path)
+                client_socket.send(fernet.encrypt(f"move ||{rel_cut_item_path}||{rel_des_item_path}".encode()))
                 self.copied_item_path = os.path.join(destination_path, os.path.basename(self.cut_item_path))
                 self.cut_item_path = None
             except shutil.Error:
@@ -686,7 +844,10 @@ class MainWindow(QWidget, Ui_MainWindow):
         delete_item(item_path)
         # Refresh the file system view
         self.model.setRootPath(self.model.rootPath())
-        relative_path = os.path.relpath(item_path, FOLDER)
+        if FOLDER in item_path:
+            relative_path = os.path.relpath(item_path, FOLDER)
+        else:
+            relative_path = os.path.relpath(item_path, self.read_write_path)
 
         client_socket.send(fernet.encrypt(f"delete_item || {relative_path}".encode()))
 
@@ -701,7 +862,10 @@ class MainWindow(QWidget, Ui_MainWindow):
             rename_item(item_path, new_name)
             # Refresh the file system view
             self.model.setRootPath(self.model.rootPath())
-            relative_path = os.path.relpath(item_path, FOLDER)
+            if FOLDER in item_path:
+                relative_path = os.path.relpath(item_path, FOLDER)
+            else:
+                relative_path = os.path.relpath(item_path, self.read_write_path)
             client_socket.send(fernet.encrypt(f"rename_item || {relative_path} || {new_name}".encode()))
 
     def create_new_file(self):
@@ -726,7 +890,10 @@ class MainWindow(QWidget, Ui_MainWindow):
 
             # Refresh the file system view
             self.model.setRootPath(self.model.rootPath())
-            relative_path = os.path.relpath(new_file_path, FOLDER)
+            if FOLDER in new_file_path:
+                relative_path = os.path.relpath(new_file_path, FOLDER)
+            else:
+                relative_path = os.path.relpath(new_file_path, self.read_write_path)
             client_socket.send(fernet.encrypt(f"create_file || {relative_path}".encode()))
 
     def create_new_directory(self):
@@ -750,7 +917,10 @@ class MainWindow(QWidget, Ui_MainWindow):
 
             # Refresh the file system view
             self.model.setRootPath(self.model.rootPath())
-            relative_path = os.path.relpath(new_dir_path, FOLDER)
+            if FOLDER in new_dir_path:
+                relative_path = os.path.relpath(new_dir_path, FOLDER)
+            else:
+                relative_path = os.path.relpath(new_dir_path, self.read_write_path)
             client_socket.send(fernet.encrypt(f"create_folder || {relative_path}".encode()))
 
     def upload_folders(self):
@@ -850,12 +1020,12 @@ class LoginWindow(QMainWindow, UiLogin):
                 chunk = client_socket.recv(CHUNK_SIZE)
                 bytes_received += len(chunk)
                 encrypted_dir_data += chunk
-
             # Decrypt the directory data
             dir_data = fernet.decrypt(encrypted_dir_data)
             folder = loads(dir_data)
-            f = folder.create(os.path.join(FOLDER, folder.name))
-            self.goto_files(f.path)
+            my_folder = folder.create(os.path.join(FOLDER, folder.name))
+
+            self.goto_files(my_folder.path)
         elif response == "FAIL":
             print("Login Failed - Invalid username or password")
             self.login_fail_label.show()

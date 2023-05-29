@@ -129,18 +129,6 @@ class Directory:
             subdirectory.create(os.path.join(parent_path, subdirectory.name))
         return Directory(parent_path)
 
-    def create_in_directory(self, directory_path):
-        """
-        Create the directory and its contents in the specified directory.
-
-        Args:
-            directory_path (str): The path to the directory where the new directory will be created.
-        """
-        new_path = os.path.join(directory_path, self.name)
-        new_directory = Directory(new_path)
-        new_directory.create()
-        return new_directory
-
     def change_file_path(self, file_path, new_path):
         """
         Change the path of a file within the directory.
@@ -211,7 +199,8 @@ class Directory:
 
 
 def main():
-    print(pickle.dumps(Directory(r"C:\Users\orico\Desktop\ServerFolder\ori")).__sizeof__())
+    d = Directory(r"C:\Users\orico\Desktop\FS\Read and Write\ori\nnn\FS\a")
+    d.change_path(r"C:\Users\orico\Desktop\FS\Read and Write\ori\nnn\FS\test\a")
     pass
 
 

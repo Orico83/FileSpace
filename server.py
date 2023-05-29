@@ -1,3 +1,4 @@
+import pathlib
 import socket
 import mysql
 import mysql.connector
@@ -84,7 +85,8 @@ class ClientThread(threading.Thread):
                 # Receive the command from the client (login or signup)
                 try:
                     data = fernet.decrypt(self.client_socket.recv(1024)).decode().strip()
-                except OSError:
+                except (OSError, InvalidToken):
+                    print(f"Connection from {self.client_address} closed")
                     break
                 command = data.split()[0]
                 print(command)
@@ -105,6 +107,7 @@ class ClientThread(threading.Thread):
                         if self.username in connected_users:
                             self.client_socket.send(fernet.encrypt("User already connected".encode()))
                         else:
+                            waiting_commands[self.username] = []
                             client_threads.append(self)
                             connected_users.append(self.username)
                             self.client_socket.send(fernet.encrypt("OK".encode()))
@@ -144,6 +147,7 @@ class ClientThread(threading.Thread):
             if mysql_connection is not None:
                 mysql_connection.close()
             self.client_socket.close()
+
             connected_users.remove(self.username)
             print(f"Connection from {self.client_address} closed")
 
@@ -174,22 +178,39 @@ class ClientThread(threading.Thread):
                 self.client_socket.recv(1024)
                 self.client_socket.send(encrypted_dir)
                 print(f"Sent {folder.path} to {self.username}")
+            elif data.startswith("get_shared_folders"):
+                for user in get_users_sharing_with_user(self.username):
+                    print(f"sending {user} to {self.username}")
+                    folder = Directory(os.path.join(FOLDER, user))
+                    serialized_dir = dumps(folder)
+                    encrypted_dir = fernet.encrypt(serialized_dir)
+                    self.client_socket.send(fernet.encrypt(f"read_write size: {len(encrypted_dir)}".encode()))
+                    self.client_socket.recv(1024)
+                    self.client_socket.send(encrypted_dir)
+                    self.client_socket.recv(1024)
+                self.client_socket.send(fernet.encrypt("STOP".encode()))
             elif data.startswith("initiate_friends"):
                 self.client_socket.send(fernet.encrypt(dumps(self.friends)))
             elif data.startswith("delete_item"):
-                item_path = os.path.join(FOLDER, data.split("||")[1].strip())
+                rel_path = data.split("||")[1].strip()
+                item_path = os.path.join(FOLDER, rel_path)
                 with self.lock:
                     delete_item(item_path)
                 print(f"Deleted {item_path}")
+                modified_folder = pathlib.Path(rel_path).parts[0]
+                update_command(data, self.username, modified_folder)
             elif data.startswith("rename_item"):
-                item_path = os.path.join(FOLDER, data.split("||")[1].strip())
+                rel_path = data.split("||")[1].strip()
+                item_path = os.path.join(FOLDER, rel_path)
                 new_name = data.split("||")[-1].strip()
                 with self.lock:
                     rename_item(item_path, new_name)
                 print(f"Renamed {item_path} to {new_name}")
+                modified_folder = pathlib.Path(rel_path).parts[0]
+                update_command(data, self.username, modified_folder)
             elif data.startswith("create_file"):
-                add_to_waiting_commands(get_users_user_is_sharing_with(self.username), data)
-                new_file_path = os.path.join(FOLDER, data.split("||")[1].strip())
+                rel_path = data.split("||")[1].strip()
+                new_file_path = os.path.join(FOLDER, rel_path)
                 if os.path.exists(new_file_path):
                     return
                 with self.lock:
@@ -197,10 +218,15 @@ class ClientThread(threading.Thread):
                     with open(new_file_path, 'w'):
                         pass  # Do nothing, just create an empty file
                 print(f"File {new_file_path} created")
+                modified_folder = pathlib.Path(rel_path).parts[0]
+                update_command(data, self.username, modified_folder)
             elif data.startswith("create_folder"):
-                new_dir_path = os.path.join(FOLDER, data.split("||")[1].strip())
+                rel_path = data.split("||")[1].strip()
+                new_dir_path = os.path.join(FOLDER, rel_path)
                 os.makedirs(new_dir_path, exist_ok=True)
                 print(f"Folder {new_dir_path} created")
+                modified_folder = pathlib.Path(rel_path).parts[0]
+                update_command(data, self.username, modified_folder)
             elif data.startswith("upload_dir"):
                 self.client_socket.send(fernet.encrypt("OK".encode()))
                 data_len = int(data.split("||")[1])
@@ -237,8 +263,10 @@ class ClientThread(threading.Thread):
                 print(f"File {file_path} uploaded")
 
             elif data.startswith("copy"):
-                copied_item_path = os.path.join(FOLDER, data.split("||")[1])
-                destination_path = os.path.join(FOLDER, data.split("||")[2])
+                rel_copied_item_path = data.split("||")[1]
+                rel_destination_path = data.split("||")[2]
+                copied_item_path = os.path.join(FOLDER, rel_copied_item_path)
+                destination_path = os.path.join(FOLDER, rel_destination_path)
                 with self.lock:
                     # Copy the file or folder
                     if os.path.isfile(copied_item_path):
@@ -256,9 +284,13 @@ class ClientThread(threading.Thread):
                             print(f"Copied folder {copied_item_path} to {destination_path}")
                         except FileExistsError:
                             pass
+                modified_folder = pathlib.Path(rel_copied_item_path).parts[0]
+                update_command(data, self.username, modified_folder)
             elif data.startswith("move"):
-                cut_item_path = os.path.join(FOLDER, data.split("||")[1])
-                destination_path = os.path.join(FOLDER, data.split("||")[2])
+                rel_cut_item_path = data.split("||")[1]
+                rel_destination_path = data.split("||")[2]
+                cut_item_path = os.path.join(FOLDER, rel_cut_item_path)
+                destination_path = os.path.join(FOLDER, rel_destination_path)
                 with self.lock:
                     try:
                         # Move the file or folder
@@ -266,6 +298,8 @@ class ClientThread(threading.Thread):
                         print(f"Moved {cut_item_path} to {destination_path}")
                     except shutil.Error:
                         pass
+                modified_folder = pathlib.Path(rel_cut_item_path).parts[0]
+                update_command(data, self.username, modified_folder)
             elif data.startswith("file_edit"):
                 file_path = os.path.join(FOLDER, data.split("||")[1])
                 self.client_socket.send(fernet.encrypt("OK".encode()))
@@ -286,6 +320,7 @@ class ClientThread(threading.Thread):
             elif data.startswith("refresh"):
                 with self.lock:
                     try:
+                        print(waiting_commands)
                         mysql_connection = mysql.connector.connect(**database_config)
                         mysql_cursor = mysql_connection.cursor()
                         # Execute the query to fetch the updated user list
@@ -577,6 +612,16 @@ def add_to_waiting_commands(users, command):
             waiting_commands[user].append(command)
         else:
             waiting_commands[user] = [command]
+
+
+def update_command(command, username, modified_folder):
+    if modified_folder == username:
+        add_to_waiting_commands(get_users_user_is_sharing_with(username), command)
+    else:
+        users = get_users_user_is_sharing_with(modified_folder)
+        users.remove(username)
+        users.append(modified_folder)
+        add_to_waiting_commands(users, command)
 
 
 def main():
