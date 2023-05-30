@@ -200,7 +200,7 @@ class Directory:
 
 def main():
     d = Directory(r"C:\Users\orico\Desktop\FS\Read and Write\ori\nnn\FS\a")
-    d.change_path(r"C:\Users\orico\Desktop\FS\Read and Write\ori\nnn\FS\test\a")
+    d.change_path(r"C:\Users\orico\Desktop\FS\Read and Write\ori\nnn\FS\test")
     pass
 
 

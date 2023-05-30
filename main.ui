@@ -33,7 +33,7 @@
      </property>
      <widget class="QWidget" name="myfolder_tab">
       <attribute name="title">
-       <string>My Folder</string>
+       <string>My FileSpace</string>
       </attribute>
       <widget class="QPushButton" name="upload_files_button">
        <property name="geometry">
@@ -46,19 +46,6 @@
        </property>
        <property name="text">
         <string>Upload Files</string>
-       </property>
-      </widget>
-      <widget class="QPushButton" name="share_button">
-       <property name="geometry">
-        <rect>
-         <x>730</x>
-         <y>240</y>
-         <width>81</width>
-         <height>23</height>
-        </rect>
-       </property>
-       <property name="text">
-        <string>Share</string>
        </property>
       </widget>
       <widget class="QPushButton" name="upload_folders_button">
@@ -360,7 +347,7 @@
          <x>10</x>
          <y>40</y>
          <width>390</width>
-         <height>500</height>
+         <height>490</height>
         </rect>
        </property>
        <property name="viewMode">
@@ -391,7 +378,7 @@
          <x>410</x>
          <y>40</y>
          <width>400</width>
-         <height>500</height>
+         <height>490</height>
         </rect>
        </property>
        <property name="viewMode">
@@ -442,12 +429,40 @@
         <string>Back</string>
        </property>
       </widget>
+      <widget class="QPushButton" name="upload_folders_shares_button">
+       <property name="geometry">
+        <rect>
+         <x>200</x>
+         <y>532</y>
+         <width>81</width>
+         <height>24</height>
+        </rect>
+       </property>
+       <property name="text">
+        <string>Upload Folders</string>
+       </property>
+      </widget>
+      <widget class="QPushButton" name="upload_files_shares_button">
+       <property name="geometry">
+        <rect>
+         <x>94</x>
+         <y>532</y>
+         <width>81</width>
+         <height>24</height>
+        </rect>
+       </property>
+       <property name="text">
+        <string>Upload Files</string>
+       </property>
+      </widget>
       <zorder>read_write_label</zorder>
       <zorder>read_write_list_view</zorder>
       <zorder>read_only_list_view</zorder>
       <zorder>read_only_label</zorder>
       <zorder>rw_go_back_button</zorder>
       <zorder>r_go_back_button</zorder>
+      <zorder>upload_folders_shares_button</zorder>
+      <zorder>upload_files_shares_button</zorder>
      </widget>
     </widget>
    </item>

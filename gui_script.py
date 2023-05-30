@@ -1,3 +1,4 @@
+# TODO upload file and update file changes (like upload folder)
 import hashlib
 import os
 import pathlib
@@ -7,7 +8,7 @@ import threading
 import time
 from pickle import loads, dumps
 import rsa
-from cryptography.fernet import Fernet
+from cryptography.fernet import Fernet, InvalidToken
 from login_window import UiLogin
 from signup_window import UiSignup
 from PyQt5.QtWidgets import QApplication, QMainWindow, QLineEdit, QWidget, QFileSystemModel, QInputDialog, QMessageBox, \
@@ -20,9 +21,10 @@ from main_window import Ui_MainWindow
 
 SERVER_IP = '127.0.0.1'
 PORT = 8080
-FOLDER = "C:/Users/orico/Desktop/FS/Folders"
-READ_ONLY_SHARES = "C:/Users/orico/Desktop/FS/Read Only"
-READ_WRITE_SHARES = "C:/Users/orico/Desktop/FS/Read and Write"
+DIRECTORY = "./FS/Folders"
+FOLDER = "Folders"
+READ_ONLY_SHARES = "./FS/Read Only"
+READ_WRITE_SHARES = "./FS/Read and Write"
 CHUNK_SIZE = 4096
 KEYS_TO_DISABLE = [Qt.Key_Space, Qt.Key_Period, Qt.Key_Slash, Qt.Key_Comma, Qt.Key_Semicolon, Qt.Key_Colon, Qt.Key_Bar,
                    Qt.Key_Backslash, Qt.Key_BracketLeft, Qt.Key_BracketRight, Qt.Key_ParenLeft, Qt.Key_ParenRight,
@@ -110,8 +112,8 @@ class MainWindow(QWidget, Ui_MainWindow):
         self.list_view.setViewMode(QtWidgets.QListView.IconMode)
         self.set_initial_directory()
         self.tabs.setCurrentIndex(0)
-        self.upload_files_button.clicked.connect(self.upload_files)  # Connect the upload button to the method
-        self.upload_folders_button.clicked.connect(self.upload_folders)
+        self.upload_files_button.clicked.connect(lambda: self.upload_files(self.model))  # Connect the upload button to the method
+        self.upload_folders_button.clicked.connect(lambda: self.upload_folders(self.model))
         self.list_view.doubleClicked.connect(self.on_list_view_double_clicked)
         self.list_view.setContextMenuPolicy(QtCore.Qt.CustomContextMenu)
         self.list_view.customContextMenuRequested.connect(lambda event: self.create_context_menu(event, self.list_view))
@@ -121,7 +123,10 @@ class MainWindow(QWidget, Ui_MainWindow):
         self.rw_go_back_button.clicked.connect(self.rw_go_back)
         self.r_go_back_button.hide()
         self.r_go_back_button.clicked.connect(self.r_go_back)
-
+        self.upload_files_shares_button.hide()
+        self.upload_files_shares_button.clicked.connect(lambda: self.upload_files(self.read_write_model))
+        self.upload_folders_shares_button.hide()
+        self.upload_folders_shares_button.clicked.connect(lambda: self.upload_folders(self.read_write_model))
         self.watcher = QFileSystemWatcher()
         self.watcher.addPath(self.dir_path)
 
@@ -195,14 +200,44 @@ class MainWindow(QWidget, Ui_MainWindow):
             with self.lock:
                 # Send a message to the server to request waiting commands
                 client_socket.send(fernet.encrypt("request_commands".encode()))
-                print(1)
-                commands = loads(fernet.decrypt(client_socket.recv(1024)))
-                print(2)
+                try:
+                    data_len = int(fernet.decrypt(client_socket.recv(1024)).decode())
+                    print(data_len)
+                except (InvalidToken, ValueError):
+                    client_socket.send(fernet.encrypt("FAIL".encode()))
+                    return
+                client_socket.send(fernet.encrypt("OK".encode()))
+                bytes_received = 0
+                encrypted_commands = b''
+                while bytes_received < data_len:
+                    chunk = client_socket.recv(CHUNK_SIZE)
+                    bytes_received += CHUNK_SIZE
+                    encrypted_commands += chunk
+                client_socket.send(fernet.encrypt("OK".encode()))
+                serialized_commands = fernet.decrypt(encrypted_commands)
+                commands = loads(serialized_commands)
                 for command in commands:
-                    if command.startswith("delete_item"):
+                    if type(command) is tuple:
+                        print(command[0])
+                        if command[0].startswith("upload_dir"):
+                            rel_path = command[0].split("||")[-1].strip()
+                            dir_data = command[1]
+                            print(rel_path)
+                            directory = loads(dir_data)
+                            if pathlib.Path(rel_path).parts[0] == self.username:
+                                location = os.path.join(DIRECTORY, rel_path)
+                            else:
+                                if pathlib.Path(rel_path).parts[0] in self.shared_read_write:
+                                    location = os.path.join(self.read_write_path, rel_path)
+                                else:
+                                    location = os.path.join(self.read_only_path, rel_path)
+                        print(location)
+                        directory.create(location)
+
+                    elif command.startswith("delete_item"):
                         rel_path = command.split("||")[1].strip()
                         if pathlib.Path(rel_path).parts[0] == self.username:
-                            item_path = os.path.join(FOLDER, rel_path)
+                            item_path = os.path.join(DIRECTORY, rel_path)
                         else:
                             if pathlib.Path(rel_path).parts[0] in self.shared_read_write:
                                 item_path = os.path.join(self.read_write_path, rel_path)
@@ -214,7 +249,7 @@ class MainWindow(QWidget, Ui_MainWindow):
                         rel_path = command.split("||")[1].strip()
                         print(os.path.join(self.read_write_path, rel_path))
                         if pathlib.Path(rel_path).parts[0] == self.username:
-                            item_path = os.path.join(FOLDER, rel_path)
+                            item_path = os.path.join(DIRECTORY, rel_path)
                         else:
                             if pathlib.Path(rel_path).parts[0] in self.shared_read_write:
                                 item_path = os.path.join(self.read_write_path, rel_path)
@@ -227,7 +262,7 @@ class MainWindow(QWidget, Ui_MainWindow):
                     elif command.startswith("create_file"):
                         rel_path = command.split("||")[1].strip()
                         if pathlib.Path(rel_path).parts[0] == self.username:
-                            new_file_path = os.path.join(FOLDER, rel_path)
+                            new_file_path = os.path.join(DIRECTORY, rel_path)
                         else:
                             if pathlib.Path(rel_path).parts[0] in self.shared_read_write:
                                 new_file_path = os.path.join(self.read_write_path, rel_path)
@@ -242,7 +277,7 @@ class MainWindow(QWidget, Ui_MainWindow):
                     elif command.startswith("create_folder"):
                         rel_path = command.split("||")[1].strip()
                         if pathlib.Path(rel_path).parts[0] == self.username:
-                            new_dir_path = os.path.join(FOLDER, rel_path)
+                            new_dir_path = os.path.join(DIRECTORY, rel_path)
                         else:
                             if pathlib.Path(rel_path).parts[0] in self.shared_read_write:
                                 new_dir_path = os.path.join(self.read_write_path, rel_path)
@@ -254,8 +289,8 @@ class MainWindow(QWidget, Ui_MainWindow):
                         rel_copied_item_path = command.split("||")[1]
                         rel_destination_path = command.split("||")[2]
                         if pathlib.Path(rel_copied_item_path).parts[0] == self.username:
-                            copied_item_path = os.path.join(FOLDER, rel_copied_item_path)
-                            destination_path = os.path.join(FOLDER, rel_destination_path)
+                            copied_item_path = os.path.join(DIRECTORY, rel_copied_item_path)
+                            destination_path = os.path.join(DIRECTORY, rel_destination_path)
                         else:
                             if pathlib.Path(rel_copied_item_path).parts[0] in self.shared_read_write:
                                 copied_item_path = os.path.join(self.read_write_path, rel_copied_item_path)
@@ -285,8 +320,8 @@ class MainWindow(QWidget, Ui_MainWindow):
                         rel_cut_item_path = command.split("||")[1]
                         rel_destination_path = command.split("||")[2]
                         if pathlib.Path(rel_cut_item_path).parts[0] == self.username:
-                            cut_item_path = os.path.join(FOLDER, rel_cut_item_path)
-                            destination_path = os.path.join(FOLDER, rel_destination_path)
+                            cut_item_path = os.path.join(DIRECTORY, rel_cut_item_path)
+                            destination_path = os.path.join(DIRECTORY, rel_destination_path)
                         else:
                             if pathlib.Path(rel_cut_item_path).parts[0] in self.shared_read_write:
                                 cut_item_path = os.path.join(self.read_write_path, rel_cut_item_path)
@@ -311,8 +346,13 @@ class MainWindow(QWidget, Ui_MainWindow):
                 print(5)
                 client_socket.send(fernet.encrypt("refresh".encode()))
                 data_len = fernet.decrypt(client_socket.recv(1024)).decode()
-                print(6)
-                data_len = int(data_len.split(":")[1])
+                print(data_len)
+                try:
+                    data_len = int(data_len.split(":")[1])
+                except IndexError:
+                    client_socket.send(fernet.encrypt("FAIL".encode()))
+                    return
+
                 client_socket.send(fernet.encrypt("OK".encode()))
                 bytes_received = 0
                 encrypted_dir_data = b''
@@ -320,8 +360,10 @@ class MainWindow(QWidget, Ui_MainWindow):
                     chunk = client_socket.recv(CHUNK_SIZE)
                     bytes_received += len(chunk)
                     encrypted_dir_data += chunk
+                client_socket.send(fernet.encrypt("OK".encode()))
                 data = fernet.decrypt(encrypted_dir_data).decode()
                 self.users = data.split('||')[0].split(',')
+                print(self.users)
                 self.users.remove(os.path.basename(self.dir_path))
                 print(7)
                 friends = data.split('||')[1].split(',')
@@ -606,7 +648,7 @@ class MainWindow(QWidget, Ui_MainWindow):
             file_data = File(path).data
             file_size = File(path).size
             # Send the file path and its data over the socket
-            client_socket.send(fernet.encrypt(f"file_edit ||{os.path.relpath(path, FOLDER)}||{file_size}".encode()))
+            client_socket.send(fernet.encrypt(f"file_edit ||{os.path.relpath(path, DIRECTORY)}||{file_size}".encode()))
             client_socket.recv(1024)  # Wait for the server's acknowledgement
             client_socket.send(fernet.encrypt(file_data))
             client_socket.recv(1024)  # Wait for the server's acknowledgement
@@ -638,6 +680,8 @@ class MainWindow(QWidget, Ui_MainWindow):
             # Set the root index of the list view to the new root path
             self.read_write_list_view.setRootIndex(self.read_write_model.index(directory_path))
             self.rw_go_back_button.show()
+            self.upload_files_shares_button.show()
+            self.upload_folders_shares_button.show()
             self.read_write_directory_history.append(directory_path)
         else:
             file_path = self.read_write_model.filePath(index)
@@ -689,8 +733,12 @@ class MainWindow(QWidget, Ui_MainWindow):
         # Show or hide the "Go Back" button based on the directory history
         if len(self.read_write_directory_history) <= 1:
             self.rw_go_back_button.hide()
+            self.upload_files_shares_button.hide()
+            self.upload_folders_shares_button.hide()
         else:
             self.rw_go_back_button.show()
+            self.upload_files_shares_button.show()
+            self.upload_folders_shares_button.show()
 
     def r_go_back(self):
         if len(self.read_only_directory_history) >= 1:
@@ -740,6 +788,10 @@ class MainWindow(QWidget, Ui_MainWindow):
         if selected_index.isValid():
             # Get the selected item's path
             item_path = self.model.filePath(selected_index)
+            if os.path.basename(os.path.dirname(item_path)) == os.path.basename(self.read_write_path) and\
+                    list_view == self.read_write_list_view:
+                # Disable context menu on users' folders in shares tab
+                return
             if os.path.isfile(item_path):
                 # Add "Open" action to the context menu
                 open_action = menu.addAction("Open")
@@ -809,11 +861,11 @@ class MainWindow(QWidget, Ui_MainWindow):
                     ok = False
             if ok:
                 if FOLDER in self.copied_item_path:
-                    rel_copied_item_path = os.path.relpath(self.copied_item_path, FOLDER)
+                    rel_copied_item_path = os.path.relpath(self.copied_item_path, DIRECTORY)
                 else:
                     rel_copied_item_path = os.path.relpath(self.copied_item_path, self.read_write_path)
                 if FOLDER in destination_path:
-                    rel_des_item_path = os.path.relpath(destination_path, FOLDER)
+                    rel_des_item_path = os.path.relpath(destination_path, DIRECTORY)
                 else:
                     rel_des_item_path = os.path.relpath(destination_path, self.read_write_path)
                 client_socket.send(fernet.encrypt(f"copy ||{rel_copied_item_path}||"
@@ -823,11 +875,11 @@ class MainWindow(QWidget, Ui_MainWindow):
                 # Move the file or folder
                 shutil.move(self.cut_item_path, destination_path)
                 if FOLDER in self.cut_item_path:
-                    rel_cut_item_path = os.path.relpath(self.cut_item_path, FOLDER)
+                    rel_cut_item_path = os.path.relpath(self.cut_item_path, DIRECTORY)
                 else:
                     rel_cut_item_path = os.path.relpath(self.cut_item_path, self.read_write_path)
                 if FOLDER in destination_path:
-                    rel_des_item_path = os.path.relpath(destination_path, FOLDER)
+                    rel_des_item_path = os.path.relpath(destination_path, DIRECTORY)
                 else:
                     rel_des_item_path = os.path.relpath(destination_path, self.read_write_path)
                 client_socket.send(fernet.encrypt(f"move ||{rel_cut_item_path}||{rel_des_item_path}".encode()))
@@ -845,7 +897,7 @@ class MainWindow(QWidget, Ui_MainWindow):
         # Refresh the file system view
         self.model.setRootPath(self.model.rootPath())
         if FOLDER in item_path:
-            relative_path = os.path.relpath(item_path, FOLDER)
+            relative_path = os.path.relpath(item_path, DIRECTORY)
         else:
             relative_path = os.path.relpath(item_path, self.read_write_path)
 
@@ -863,7 +915,7 @@ class MainWindow(QWidget, Ui_MainWindow):
             # Refresh the file system view
             self.model.setRootPath(self.model.rootPath())
             if FOLDER in item_path:
-                relative_path = os.path.relpath(item_path, FOLDER)
+                relative_path = os.path.relpath(item_path, DIRECTORY)
             else:
                 relative_path = os.path.relpath(item_path, self.read_write_path)
             client_socket.send(fernet.encrypt(f"rename_item || {relative_path} || {new_name}".encode()))
@@ -891,7 +943,7 @@ class MainWindow(QWidget, Ui_MainWindow):
             # Refresh the file system view
             self.model.setRootPath(self.model.rootPath())
             if FOLDER in new_file_path:
-                relative_path = os.path.relpath(new_file_path, FOLDER)
+                relative_path = os.path.relpath(new_file_path, DIRECTORY)
             else:
                 relative_path = os.path.relpath(new_file_path, self.read_write_path)
             client_socket.send(fernet.encrypt(f"create_file || {relative_path}".encode()))
@@ -918,15 +970,15 @@ class MainWindow(QWidget, Ui_MainWindow):
             # Refresh the file system view
             self.model.setRootPath(self.model.rootPath())
             if FOLDER in new_dir_path:
-                relative_path = os.path.relpath(new_dir_path, FOLDER)
+                relative_path = os.path.relpath(new_dir_path, DIRECTORY)
             else:
                 relative_path = os.path.relpath(new_dir_path, self.read_write_path)
             client_socket.send(fernet.encrypt(f"create_folder || {relative_path}".encode()))
 
-    def upload_folders(self):
+    def upload_folders(self, model):
         directory = QtWidgets.QFileDialog.getExistingDirectory(self, "Select Folder to Upload",
                                                                QtCore.QDir.homePath())
-        parent_path = self.model.rootPath()
+        parent_path = model.rootPath()
         if directory:
             # Check if a directory is selected
             if not os.path.isdir(parent_path):
@@ -934,27 +986,32 @@ class MainWindow(QWidget, Ui_MainWindow):
             directory = Directory(directory)
             new_dir = directory.create(os.path.join(parent_path, directory.name))
             # Refresh the file system view
-            self.model.setRootPath(self.model.rootPath())
+            model.setRootPath(model.rootPath())
             serialized_dir = dumps(new_dir)
             encrypted_dir = fernet.encrypt(serialized_dir)
+            new_dir_path = new_dir.path
+            if FOLDER in new_dir_path:
+                relative_path = os.path.relpath(new_dir_path, DIRECTORY)
+            else:
+                relative_path = os.path.relpath(new_dir_path, self.read_write_path)
 
             def upload_directory():
                 encrypted_message = fernet.encrypt(
-                    f"upload_dir || {len(encrypted_dir)} || {os.path.relpath(new_dir.path, FOLDER)}".encode())
+                    f"upload_dir || {len(encrypted_dir)} || {relative_path}".encode())
                 client_socket.send(encrypted_message)
                 client_socket.recv(1024)
                 client_socket.send(encrypted_dir)
-                client_socket.recv(2)
+                client_socket.recv(1024)
 
             # Create a thread and start the network operations
             thread = threading.Thread(target=upload_directory)
             thread.start()
 
-    def upload_files(self):
+    def upload_files(self, model):
         file_dialog = QtWidgets.QFileDialog(self, "Select File to Upload")
         file_dialog.setFileMode(QtWidgets.QFileDialog.ExistingFiles | QtWidgets.QFileDialog.Directory)
         file_dialog.setOption(QtWidgets.QFileDialog.ShowDirsOnly, False)  # Show both files and directories
-        parent_path = self.model.rootPath()
+        parent_path = model.rootPath()
         if file_dialog.exec_():
             # Check if a directory is selected
             if not os.path.isdir(parent_path):
@@ -968,15 +1025,20 @@ class MainWindow(QWidget, Ui_MainWindow):
                 shutil.copyfile(file.path, destination_path)
                 serialized_file = dumps(file)
                 encrypted_file = fernet.encrypt(serialized_file)
+                if FOLDER in destination_path:
+                    relative_path = os.path.relpath(destination_path, DIRECTORY)
+                else:
+                    relative_path = os.path.relpath(destination_path, self.read_write_path)
 
                 client_socket.send(fernet.encrypt(f"upload_file || {len(encrypted_file)} ||"
-                                                  f" {os.path.relpath(destination_path, FOLDER)}".encode()))
+                                                  f" {relative_path}".encode()))
                 client_socket.recv(1024)
                 client_socket.send(encrypted_file)
                 client_socket.recv(1024)
 
             # Refresh the file system view
-            self.model.setRootPath(self.model.rootPath())
+            model.setRootPath(model.rootPath())
+
 
 
 class LoginWindow(QMainWindow, UiLogin):
@@ -1023,7 +1085,7 @@ class LoginWindow(QMainWindow, UiLogin):
             # Decrypt the directory data
             dir_data = fernet.decrypt(encrypted_dir_data)
             folder = loads(dir_data)
-            my_folder = folder.create(os.path.join(FOLDER, folder.name))
+            my_folder = folder.create(os.path.join(DIRECTORY, folder.name))
 
             self.goto_files(my_folder.path)
         elif response == "FAIL":
@@ -1080,7 +1142,7 @@ class SignupWindow(QMainWindow, UiSignup):
         # Check the server's response and show an appropriate message
         if response == "OK":
             print(f"Signup Successful - Welcome {username}!")
-            path = os.path.join(FOLDER, username)
+            path = os.path.join(DIRECTORY, username)
             os.makedirs(path)
             self.goto_files(path)
 
