@@ -1,4 +1,5 @@
 # TODO upload file and update file changes (like upload folder)
+# TODO when adding a friend, the folders don't update until the client is reopened
 import hashlib
 import os
 import pathlib
@@ -112,7 +113,8 @@ class MainWindow(QWidget, Ui_MainWindow):
         self.list_view.setViewMode(QtWidgets.QListView.IconMode)
         self.set_initial_directory()
         self.tabs.setCurrentIndex(0)
-        self.upload_files_button.clicked.connect(lambda: self.upload_files(self.model))  # Connect the upload button to the method
+        self.upload_files_button.clicked.connect(
+            lambda: self.upload_files(self.model))  # Connect the upload button to the method
         self.upload_folders_button.clicked.connect(lambda: self.upload_folders(self.model))
         self.list_view.doubleClicked.connect(self.on_list_view_double_clicked)
         self.list_view.setContextMenuPolicy(QtCore.Qt.CustomContextMenu)
@@ -470,14 +472,12 @@ class MainWindow(QWidget, Ui_MainWindow):
         # Process the selected button
         if clicked_button == 0:
             print(f"Sharing read-only with friend: {friend_name}")
-            # TODO: Implement logic for sharing read-only permissions
             self.sharing_read_only.append(friend_name)
             self.sharing_read_only_list_widget.clear()
             self.sharing_read_only_list_widget.addItems(self.sharing_read_only)
             client_socket.send(fernet.encrypt(f"share||{friend_name}||read".encode()))
         elif clicked_button == 1:
             print(f"Sharing read-write with friend: {friend_name}")
-            # TODO: Implement logic for sharing read-write permissions
             self.sharing_read_write.append(friend_name)
             self.sharing_read_write_list_widget.clear()
             self.sharing_read_write_list_widget.addItems(self.sharing_read_write)
@@ -788,7 +788,7 @@ class MainWindow(QWidget, Ui_MainWindow):
         if selected_index.isValid():
             # Get the selected item's path
             item_path = self.model.filePath(selected_index)
-            if os.path.basename(os.path.dirname(item_path)) == os.path.basename(self.read_write_path) and\
+            if os.path.basename(os.path.dirname(item_path)) == os.path.basename(self.read_write_path) and \
                     list_view == self.read_write_list_view:
                 # Disable context menu on users' folders in shares tab
                 return
@@ -1030,15 +1030,13 @@ class MainWindow(QWidget, Ui_MainWindow):
                 else:
                     relative_path = os.path.relpath(destination_path, self.read_write_path)
 
-                client_socket.send(fernet.encrypt(f"upload_file || {len(encrypted_file)} ||"
-                                                  f" {relative_path}".encode()))
+                client_socket.send(fernet.encrypt(f"upload_file || {len(encrypted_file)} || {relative_path}".encode()))
                 client_socket.recv(1024)
                 client_socket.send(encrypted_file)
                 client_socket.recv(1024)
 
             # Refresh the file system view
             model.setRootPath(model.rootPath())
-
 
 
 class LoginWindow(QMainWindow, UiLogin):

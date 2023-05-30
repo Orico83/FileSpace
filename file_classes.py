@@ -199,8 +199,8 @@ class Directory:
 
 
 def main():
-    d = Directory(r"C:\Users\orico\Desktop\FS\Read and Write\ori\nnn\FS\a")
-    d.change_path(r"C:\Users\orico\Desktop\FS\Read and Write\ori\nnn\FS\test")
+    d = Directory(r"./FS")
+    print(d.search_files(r"test"))
     pass
 
 
