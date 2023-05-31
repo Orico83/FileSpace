@@ -1,4 +1,3 @@
-import pathlib
 import socket
 import mysql
 import mysql.connector
@@ -33,8 +32,6 @@ CREATE TABLE IF NOT EXISTS users_sharing (
     permission ENUM('read', 'read_write')
 )
 """
-
-
 
 
 def main():

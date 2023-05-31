@@ -347,7 +347,7 @@
          <x>10</x>
          <y>40</y>
          <width>390</width>
-         <height>490</height>
+         <height>471</height>
         </rect>
        </property>
        <property name="viewMode">
@@ -378,7 +378,7 @@
          <x>410</x>
          <y>40</y>
          <width>400</width>
-         <height>490</height>
+         <height>471</height>
         </rect>
        </property>
        <property name="viewMode">
@@ -433,7 +433,7 @@
        <property name="geometry">
         <rect>
          <x>200</x>
-         <y>532</y>
+         <y>520</y>
          <width>81</width>
          <height>24</height>
         </rect>
@@ -446,7 +446,7 @@
        <property name="geometry">
         <rect>
          <x>94</x>
-         <y>532</y>
+         <y>520</y>
          <width>81</width>
          <height>24</height>
         </rect>

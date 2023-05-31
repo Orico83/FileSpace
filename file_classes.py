@@ -167,8 +167,8 @@ class Directory:
         """
         Change the path of the directory.
 
-        Args:
-            new_path (str): The new path for the directory.
+        :param new_path: The new path for the directory.
+        :returns: None
         """
         os.makedirs(os.path.dirname(new_path), exist_ok=True)
         shutil.move(self.path, os.path.dirname(new_path))

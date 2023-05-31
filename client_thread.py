@@ -1,17 +1,16 @@
 import pathlib
-
 from cryptography.fernet import Fernet, InvalidToken
 import rsa
 import os
 import shutil
 import threading
 from pickle import dumps, loads
-
 import mysql
 from file_classes import Directory
 
 FOLDER = "./ServerFolder"
 CHUNK_SIZE = 4096
+HEADER_SIZE = 10
 public_key, private_key = rsa.newkeys(1024)
 SYMMETRIC_KEY = Fernet.generate_key()
 fernet = Fernet(SYMMETRIC_KEY)
@@ -24,6 +23,49 @@ database_config = {
     "password": "OC8305",
     "database": "test"
 }
+
+
+def send_data(sock, msg, send_bytes=False):
+    """
+    Sends data over a socket connection.
+
+    :param sock: The socket object representing the connection.
+    :param msg: The message to be sent.
+    :param send_bytes: A boolean flag indicating whether the message is already bytes (default is False).
+    :returns: None
+    """
+    if not send_bytes:
+        msg = msg.encode()
+    msg = fernet.encrypt(msg)
+    msg_len = str(len(msg)).encode()
+    sock.send(fernet.encrypt(msg_len))  # Exactly 100 bytes
+    sock.send(msg)
+
+
+def receive_data(sock, return_bytes=False):
+    """
+    Receives data over a socket connection.
+
+    :param sock: The socket object representing the connection.
+    :param return_bytes: A boolean flag indicating whether the received data should be returned as bytes
+    (default is False).
+    :returns: The received data.
+    """
+    try:
+        data = b''
+        bytes_received = 0
+        msg_len = int(fernet.decrypt(sock.recv(100)).decode())
+        while bytes_received < msg_len:
+            chunk = sock.recv(CHUNK_SIZE)
+            bytes_received += len(chunk)
+            data += chunk
+        data = fernet.decrypt(data)
+        if not return_bytes:
+            data = data.decode()
+        return data
+    except ConnectionResetError as err:
+        print(err)
+        sock.close()
 
 
 class ClientThread(threading.Thread):
@@ -53,8 +95,9 @@ class ClientThread(threading.Thread):
             while True:
                 # Receive the command from the client (login or signup)
                 try:
-                    data = fernet.decrypt(self.client_socket.recv(1024)).decode().strip()
-                except (OSError, InvalidToken):
+                    data = receive_data(self.client_socket)
+                except (OSError, InvalidToken) as err:
+                    print(err)
                     print(f"Connection from {self.client_address} closed")
                     break
                 command = data.split()[0]
@@ -74,11 +117,11 @@ class ClientThread(threading.Thread):
                     result = mysql_cursor.fetchone()
                     if result:
                         if self.username in connected_users:
-                            self.client_socket.send(fernet.encrypt("User already connected".encode()))
+                            send_data(self.client_socket, "User already connected")
                         else:
                             waiting_commands[self.username] = []
                             connected_users.append(self.username)
-                            self.client_socket.send(fernet.encrypt("OK".encode()))
+                            send_data(self.client_socket, "OK")
                             self.folder_path = os.path.join(FOLDER, self.username)
                             self.friends = [] if result[3] is None else result[3].split(',')
                             self.friend_requests = [] if result[4] is None else result[4].split(',')
@@ -86,7 +129,7 @@ class ClientThread(threading.Thread):
                                                  mysql_cursor)  # Call a method to handle subsequent commands
 
                     else:
-                        self.client_socket.send(fernet.encrypt("FAIL".encode()))
+                        send_data(self.client_socket, "FAIL")
                 elif command == "signup":
                     # Receive the username and password from the client
                     self.username = data.split()[1]
@@ -96,7 +139,7 @@ class ClientThread(threading.Thread):
                     mysql_cursor.execute("SELECT * FROM users WHERE username = %s", (self.username,))
                     result = mysql_cursor.fetchone()
                     if result:
-                        self.client_socket.send(fernet.encrypt("FAIL".encode()))
+                        send_data(self.client_socket, "FAIL")
                     else:
                         connected_users.append(self.username)
                         mysql_cursor.execute("INSERT INTO users (username, password) VALUES (%s, %s)",
@@ -104,7 +147,7 @@ class ClientThread(threading.Thread):
                         mysql_connection.commit()
                         self.folder_path = os.path.join(FOLDER, self.username)
                         os.makedirs(self.folder_path)
-                        self.client_socket.send(fernet.encrypt("OK".encode()))
+                        send_data(self.client_socket, "OK")
                         self.handle_commands(mysql_connection,
                                              mysql_cursor)  # Call a method to handle subsequent commands
         except InvalidToken:
@@ -122,7 +165,7 @@ class ClientThread(threading.Thread):
         while True:
             # Receive the command from the client
             try:
-                data = fernet.decrypt(self.client_socket.recv(1024)).decode()
+                data = receive_data(self.client_socket)
             except (InvalidToken, ConnectionError):
                 self.client_socket.close()
                 connected_users.remove(self.username)
@@ -138,26 +181,16 @@ class ClientThread(threading.Thread):
                 except FileNotFoundError:
                     os.makedirs(self.folder_path)
                     folder = Directory(self.folder_path)
-                # Handle command1
                 serialized_dir = dumps(folder)
-                encrypted_dir = fernet.encrypt(serialized_dir)
-                self.client_socket.send(fernet.encrypt(f"size: {len(encrypted_dir)}".encode()))
-                self.client_socket.recv(1024)
-                self.client_socket.send(encrypted_dir)
+                send_data(self.client_socket, serialized_dir, send_bytes=True)
                 print(f"Sent {folder.path} to {self.username}")
             elif data.startswith("get_shared_folders"):
+                send_data(self.client_socket, str(len(get_users_user_is_sharing_with(self.username))))
                 for user in get_users_sharing_with_user(self.username):
                     print(f"sending {user} to {self.username}")
                     folder = Directory(os.path.join(FOLDER, user))
                     serialized_dir = dumps(folder)
-                    encrypted_dir = fernet.encrypt(serialized_dir)
-                    self.client_socket.send(fernet.encrypt(f"read_write size: {len(encrypted_dir)}".encode()))
-                    self.client_socket.recv(1024)
-                    self.client_socket.send(encrypted_dir)
-                    self.client_socket.recv(1024)
-                self.client_socket.send(fernet.encrypt("STOP".encode()))
-            elif data.startswith("initiate_friends"):
-                self.client_socket.send(fernet.encrypt(dumps(self.friends)))
+                    send_data(self.client_socket, serialized_dir, send_bytes=True)
             elif data.startswith("delete_item"):
                 rel_path = data.split("||")[1].strip()
                 item_path = os.path.join(FOLDER, rel_path)
@@ -195,43 +228,25 @@ class ClientThread(threading.Thread):
                 modified_folder = pathlib.Path(rel_path).parts[0]
                 update_command(data, self.username, modified_folder)
             elif data.startswith("upload_dir"):
-                self.client_socket.send(fernet.encrypt("OK".encode()))
-                data_len = int(data.split("||")[1])
-                bytes_received = 0
-                encrypted_dir_data = b''
-                print("Receiving folder...")
-                while bytes_received < data_len:
-                    chunk = self.client_socket.recv(CHUNK_SIZE)
-                    bytes_received += CHUNK_SIZE
-                    encrypted_dir_data += chunk
-                dir_data = fernet.decrypt(encrypted_dir_data)
-                directory = loads(dir_data)
-                rel_path = data.split("||")[2].strip()
-                location = os.path.join(FOLDER, rel_path)
+                serialized_dir = receive_data(self.client_socket, return_bytes=True)
+                directory = loads(serialized_dir)
+                rel_path = data.split("||")[1].strip()  # Extract the relative path
+                location = os.path.join(FOLDER, rel_path)  # Create the target location
                 with self.lock:
-                    directory.create(location)
+                    directory.create(location)  # Create the directory at the target location
                 print(f"Folder {location} uploaded")
-                modified_folder = pathlib.Path(rel_path).parts[0]
-                update_command((data, dir_data), self.username, modified_folder)
-                self.client_socket.send(fernet.encrypt("OK".encode()))
+                modified_folder = pathlib.Path(rel_path).parts[0]  # Get the modified folder name from the relative path
+                update_command((data, serialized_dir), self.username, modified_folder)  # Add the command to waiting_commands
             elif data.startswith("upload_file"):
-                self.client_socket.send(fernet.encrypt("OK".encode()))
-                data_len = int(data.split("||")[1])
-                bytes_received = 0
-                encrypted_file_data = b''
-                print("Receiving file...")
-                while bytes_received < data_len:
-                    chunk = self.client_socket.recv(CHUNK_SIZE)
-                    bytes_received += CHUNK_SIZE
-                    encrypted_file_data += chunk
-                file_data = fernet.decrypt(encrypted_file_data)
-                file = loads(file_data)
-                file_path = os.path.join(FOLDER, data.split("||")[2].strip())
+                serialized_file = receive_data(self.client_socket, return_bytes=True)
+                file = loads(serialized_file)
+                rel_path = data.split("||")[1].strip()
+                file_path = os.path.join(FOLDER, rel_path)
                 with self.lock:
                     file.create(file_path)
-                self.client_socket.send(fernet.encrypt("OK".encode()))
                 print(f"File {file_path} uploaded")
-
+                modified_folder = pathlib.Path(rel_path).parts[0]
+                update_command((data, serialized_file), self.username, modified_folder)
             elif data.startswith("copy"):
                 rel_copied_item_path = data.split("||")[1]
                 rel_destination_path = data.split("||")[2]
@@ -271,22 +286,15 @@ class ClientThread(threading.Thread):
                 modified_folder = pathlib.Path(rel_cut_item_path).parts[0]
                 update_command(data, self.username, modified_folder)
             elif data.startswith("file_edit"):
-                file_path = os.path.join(FOLDER, data.split("||")[1])
-                self.client_socket.send(fernet.encrypt("OK".encode()))
-                data_len = int(data.split("||")[-1])
-                bytes_received = 0
-                encrypted_file_data = b''
-                print(f"Updating file {file_path}")
-                while bytes_received < data_len:
-                    chunk = self.client_socket.recv(CHUNK_SIZE)
-                    bytes_received += CHUNK_SIZE
-                    encrypted_file_data += chunk
-                file_data = fernet.decrypt(encrypted_file_data)
+                rel_path = data.split("||")[1]
+                file_path = os.path.join(FOLDER, rel_path)
+                file_data = receive_data(self.client_socket, return_bytes=True)
                 # Acquire the lock before opening the file and writing to it
                 with self.lock:
                     with open(file_path, "wb") as f:
                         f.write(file_data)
-                self.client_socket.send(fernet.encrypt("OK".encode()))
+                modified_folder = pathlib.Path(rel_path).parts[0]
+                update_command((data, file_data), self.username, modified_folder)
             elif data.startswith("refresh"):
                 with self.lock:
                     try:
@@ -307,17 +315,11 @@ class ClientThread(threading.Thread):
                         friend_requests = ','.join(self.friend_requests)
                         sharing_read_only = ','.join(get_sharing_read_only(self.username))
                         sharing_read_write = ','.join(get_sharing_read_write(self.username))
-                        print(sharing_read_write)
                         shared_read_only = ','.join(get_shared_read_only(self.username))
                         shared_read_write = ','.join(get_shared_read_write(self.username))
-                        message = fernet.encrypt(f"{updated_users}||{friends}||{friend_requests}||{sharing_read_only}||"
-                                                 f"{sharing_read_write}||{shared_read_only}||{shared_read_write}".encode())
-                        self.client_socket.send(fernet.encrypt(f"size:{len(message)}".encode()))
-                        response = fernet.decrypt(self.client_socket.recv(1024)).decode()
-                        if response == "OK":
-                            self.client_socket.send(message)
-                            print(f"Sent users, friends and friend requests to client: {self.username}")
-                            self.client_socket.recv(1024)
+                        message = f"{updated_users}||{friends}||{friend_requests}||{sharing_read_only}||" \
+                                  f"{sharing_read_write}||{shared_read_only}||{shared_read_write}"
+                        send_data(self.client_socket, message)
                     except Exception as error:
                         print(error)
 
@@ -332,7 +334,6 @@ class ClientThread(threading.Thread):
                 mysql_cursor.execute("UPDATE users SET friends = %s WHERE username = %s",
                                      (add_to_new_friend, new_friend))
                 mysql_connection.commit()
-                self.client_socket.send("ok".encode())
                 print(f"{self.username} has added {new_friend} as a friend")
             elif data.startswith("send_friend_request"):
                 user = data.split('||')[1]
@@ -348,9 +349,9 @@ class ClientThread(threading.Thread):
                                          (friend_requests, user))
                     mysql_connection.commit()
                     print(f"{self.username} has sent {user} a friend request")
-                    self.client_socket.send(fernet.encrypt("OK".encode()))
+                    send_data(self.client_socket, "OK")
                 else:
-                    self.client_socket.send(fernet.encrypt("You've already sent this user a friend request".encode()))
+                    send_data(self.client_socket, "You've already sent this user a friend request")
             elif data.startswith("remove_friend_request"):
                 user = data.split('||')[1]
                 self.friend_requests.remove(user)
@@ -383,30 +384,15 @@ class ClientThread(threading.Thread):
                 print(f"{self.username} is currently sharing to {get_users_user_is_sharing_with(self.username)}")
             elif data.startswith("request_commands"):
                 if self.username in waiting_commands:
-                    encrypted_commands = fernet.encrypt(dumps(waiting_commands[self.username]))
-                    self.client_socket.send(fernet.encrypt(f"{len(encrypted_commands)}".encode()))
-                    print(len(encrypted_commands))
-                    response = fernet.decrypt(self.client_socket.recv(1024)).decode()
-                    if response == "OK":
-                        self.client_socket.send(encrypted_commands)
-                        self.client_socket.recv(1024)
+                    commands = dumps(waiting_commands[self.username])
+                    send_data(self.client_socket, commands, send_bytes=True)
                     waiting_commands[self.username] = []
-                    print("lol")
                 else:
-                    encrypted_commands = fernet.encrypt(dumps([]))
-                    print(len(encrypted_commands))
-                    self.client_socket.send(fernet.encrypt(f"{len(encrypted_commands)}".encode()))
-                    response = fernet.decrypt(self.client_socket.recv(1024)).decode()
-                    if response == "OK":
-                        self.client_socket.send(encrypted_commands)
-                        self.client_socket.recv(1024)
-
+                    commands = dumps([])
+                    send_data(self.client_socket, commands, send_bytes=True)
 
             else:
-                self.client_socket.send(fernet.encrypt("Invalid command".encode()))
-
-    def send_command(self, command):
-        self.client_socket.send(fernet.encrypt(command.encode()))
+                send_data(self.client_socket, "Invalid command")
 
 
 def delete_item(item_path):
@@ -427,6 +413,13 @@ def rename_item(item_path, new_name):
 
 
 def get_users_user_is_sharing_with(username):
+    """
+        Retrieves a list of users that the given username is sharing with.
+
+        :param username: The username for which the shared users are retrieved.
+        :return: A list of users that the given username is sharing with.
+        :raises mysql.connector.Error: If there is an error retrieving the shared users from the database.
+        """
     try:
         mysql_connection = mysql.connector.connect(**database_config)
         mysql_cursor = mysql_connection.cursor()
@@ -515,27 +508,21 @@ def get_permissions(sharing_user, shared_user):
     try:
         # Create a cursor object to execute SQL queries
         mysql_cursor = mysql_connection.cursor()
-
         # Prepare the SELECT statement
         select_query = "SELECT permission FROM users_sharing WHERE sharing_user = %s AND shared_user = %s"
-
         # Execute the SELECT statement with the sharing_user and shared_user as parameters
         mysql_cursor.execute(select_query, (sharing_user, shared_user))
-
         # Fetch the first row returned by the query
         row = mysql_cursor.fetchone()
-
         if row:
             # Return the value of the 'permissions' column
             return row[0]
         else:
             # Return a default value if no matching row is found
             return None
-
     except mysql.connector.Error as error:
         # Handle any potential errors
         print(f"Error retrieving permissions: {error}")
-
     finally:
         # Close the cursor and connection
         mysql_cursor.close()
@@ -579,14 +566,31 @@ def get_shared_read_write(username):
 
 
 def add_to_waiting_commands(users, command):
+    """
+    Adds a command to the waiting commands for each user.
+
+    :param users: A list of users.
+    :param command: The command to be added to the waiting commands.
+    :returns: None
+    """
     for user in users:
-        if user in waiting_commands:
-            waiting_commands[user].append(command)
-        else:
-            waiting_commands[user] = [command]
+        if user in connected_users:
+            if user in waiting_commands:
+                waiting_commands[user].append(command)
+            else:
+                waiting_commands[user] = [command]
 
 
 def update_command(command, username, modified_folder):
+    """
+    Adds the command that was given by the user to the list of commands of each user that has any permission to the
+    modified folder.
+
+    :param command: The command to be added.
+    :param username: The user that sent the command.
+    :param modified_folder: The folder that was modified.
+    :returns: None
+    """
     if modified_folder == username:
         add_to_waiting_commands(get_users_user_is_sharing_with(username), command)
     else:
