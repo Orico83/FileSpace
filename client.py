@@ -1,5 +1,5 @@
 # TODO update file changes - watcher for Read And Write directory
-# TODO when adding a friend, the folders don't update until the client is reopened
+# TODO when adding a friend, the folders don't update until the client is reopened - send a friend's after he was added
 import hashlib
 import os
 import pathlib
@@ -46,6 +46,7 @@ def send_data(sock, msg, send_bytes=False):
     :param send_bytes: A boolean flag indicating whether the message is already bytes (default is False).
     :returns: None
     """
+    print(msg)
     if not send_bytes:
         msg = msg.encode()
     msg = fernet.encrypt(msg)
@@ -232,6 +233,7 @@ class MainWindow(QWidget, Ui_MainWindow):
                 send_data(client_socket, "request_commands")
                 serialized_commands = receive_data(client_socket, return_bytes=True)
                 commands = loads(serialized_commands)
+                print(commands)
                 for command in commands:
                     if type(command) is tuple:
                         if command[0].startswith("upload_dir"):
@@ -275,6 +277,15 @@ class MainWindow(QWidget, Ui_MainWindow):
                                     file_path = os.path.join(self.read_only_path, rel_path)
                             with open(file_path, "wb") as f:
                                 f.write(file_data)
+                        elif command[0].startswith("share"):
+                            permissions = command[0].split("||")[2]
+                            serialized_dir = command[1]
+                            directory = loads(serialized_dir)
+                            if permissions == "read":
+                                dir_path = os.path.join(self.read_only_path, directory.name)
+                            elif permissions == "read_write":
+                                dir_path = os.path.join(self.read_write_path, directory.name)
+                            directory.create(dir_path)
                     elif command.startswith("delete_item"):
                         rel_path = command.split("||")[1].strip()
                         if pathlib.Path(rel_path).parts[0] == self.username:
@@ -386,6 +397,7 @@ class MainWindow(QWidget, Ui_MainWindow):
             with self.lock:
                 send_data(client_socket, "refresh")
                 data = receive_data(client_socket)
+                print(data)
                 self.users = data.split('||')[0].split(',')
                 self.users.remove(os.path.basename(self.dir_path))
                 friends = data.split('||')[1].split(',')
@@ -496,12 +508,14 @@ class MainWindow(QWidget, Ui_MainWindow):
             self.sharing_read_only_list_widget.clear()
             self.sharing_read_only_list_widget.addItems(self.sharing_read_only)
             send_data(client_socket, f"share||{friend_name}||read")
+            send_data(client_socket, dumps(directory), send_bytes=True)
         elif clicked_button == 1:
             print(f"Sharing read-write with friend: {friend_name}")
             self.sharing_read_write.append(friend_name)
             self.sharing_read_write_list_widget.clear()
             self.sharing_read_write_list_widget.addItems(self.sharing_read_write)
             send_data(client_socket, f"share||{friend_name}||read_write")
+            send_data(client_socket, dumps(directory), send_bytes=True)
 
         else:
             print("Share canceled")
@@ -602,7 +616,7 @@ class MainWindow(QWidget, Ui_MainWindow):
         self.friends.append(user)
         self.friends_list_widget.clear()
         self.friends_list_widget.addItems(self.friends)
-        send_data(client_socket, f"add_friend {user}")
+        send_data(client_socket, f"add_friend ||{user}")
         print(f"added {user}")
 
     def remove_friend_request(self, user):
@@ -613,7 +627,7 @@ class MainWindow(QWidget, Ui_MainWindow):
         else:
             self.friend_requests_list_widget.clear()
             self.friend_requests_list_widget.addItem(NO_FRIEND_REQUESTS)
-        send_data(client_socket, f"remove_friend_request ||{user}")
+        send_data(client_socket, f"rmv_friend_request ||{user}")
 
     def friend_request_double_clicked(self, item):
         user = item.text()
@@ -633,6 +647,7 @@ class MainWindow(QWidget, Ui_MainWindow):
             self.remove_friend_request(user)
             if button == "Yes":
                 self.add_friend(user)
+                print(1)
 
     def search_users(self, search_text):
         if not search_text:

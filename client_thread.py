@@ -63,7 +63,7 @@ def receive_data(sock, return_bytes=False):
         if not return_bytes:
             data = data.decode()
         return data
-    except ConnectionResetError as err:
+    except (ConnectionResetError, OSError) as err:
         print(err)
         sock.close()
 
@@ -166,6 +166,7 @@ class ClientThread(threading.Thread):
             # Receive the command from the client
             try:
                 data = receive_data(self.client_socket)
+                print(data)
             except (InvalidToken, ConnectionError):
                 self.client_socket.close()
                 connected_users.remove(self.username)
@@ -185,7 +186,7 @@ class ClientThread(threading.Thread):
                 send_data(self.client_socket, serialized_dir, send_bytes=True)
                 print(f"Sent {folder.path} to {self.username}")
             elif data.startswith("get_shared_folders"):
-                send_data(self.client_socket, str(len(get_users_user_is_sharing_with(self.username))))
+                send_data(self.client_socket, str(len(get_users_sharing_with_user(self.username))))
                 for user in get_users_sharing_with_user(self.username):
                     print(f"sending {user} to {self.username}")
                     folder = Directory(os.path.join(FOLDER, user))
@@ -298,7 +299,6 @@ class ClientThread(threading.Thread):
             elif data.startswith("refresh"):
                 with self.lock:
                     try:
-                        print(waiting_commands)
                         mysql_connection = mysql.connector.connect(**database_config)
                         mysql_cursor = mysql_connection.cursor()
                         # Execute the query to fetch the updated user list
@@ -310,7 +310,9 @@ class ClientThread(threading.Thread):
                                              (self.username,))
                         row = mysql_cursor.fetchone()
                         self.friends = [] if row[0] is None else row[0].split(',')
+                        print(f"{self.username} friends: {self.friends}")
                         self.friend_requests = [] if row[1] is None else row[1].split(',')
+                        print(f"{self.username} friend requests: {self.friend_requests}")
                         friends = ','.join(self.friends)
                         friend_requests = ','.join(self.friend_requests)
                         sharing_read_only = ','.join(get_sharing_read_only(self.username))
@@ -324,7 +326,7 @@ class ClientThread(threading.Thread):
                         print(error)
 
             elif data.startswith("add_friend"):
-                new_friend = data.split()[1]
+                new_friend = data.split("||")[1]
                 self.friends.append(new_friend)
                 friends = ','.join(self.friends)
                 mysql_cursor.execute("SELECT friends FROM users WHERE username = %s", (new_friend,))
@@ -352,7 +354,7 @@ class ClientThread(threading.Thread):
                     send_data(self.client_socket, "OK")
                 else:
                     send_data(self.client_socket, "You've already sent this user a friend request")
-            elif data.startswith("remove_friend_request"):
+            elif data.startswith("rmv_friend_request"):
                 user = data.split('||')[1]
                 self.friend_requests.remove(user)
                 friend_requests = ','.join(self.friend_requests) if self.friend_requests else None
@@ -378,9 +380,12 @@ class ClientThread(threading.Thread):
                 permissions = data.split("||")[2]
                 if shared_user in get_users_user_is_sharing_with(self.username):
                     remove_row(self.username, shared_user)
+                else:
+                    serialized_dir = receive_data(self.client_socket, return_bytes=True)
+                    add_to_waiting_commands([shared_user], (data, serialized_dir))
                 if permissions != "remove":
                     insert_user_sharing(self.username, shared_user, permissions)
-                print(f"{self.username} has shared his folder with {shared_user} with {permissions} permissions")
+                    print(f"{self.username} has shared his folder with {shared_user} with {permissions} permissions")
                 print(f"{self.username} is currently sharing to {get_users_user_is_sharing_with(self.username)}")
             elif data.startswith("request_commands"):
                 if self.username in waiting_commands:
