@@ -1,10 +1,7 @@
-
-
-
 from PyQt5 import QtCore, QtGui, QtWidgets
 
 
-class UiSignup(object):
+class Ui_Signup(object):
     def setupUi(self, MainWindow):
         MainWindow.setObjectName("MainWindow")
         MainWindow.setEnabled(True)
@@ -98,13 +95,3 @@ class UiSignup(object):
         self.back_button.setText(_translate("MainWindow", "Back"))
         self.signup_fail_label.setText(_translate("MainWindow", "Signup Failed - Username already exists"))
         self.confirm_fail_label.setText(_translate("MainWindow", "Signup Failed - Couldn\'t confirm password"))
-
-
-if __name__ == "__main__":
-    import sys
-    app = QtWidgets.QApplication(sys.argv)
-    MainWindow = QtWidgets.QMainWindow()
-    ui = UiSignup()
-    ui.setupUi(MainWindow)
-    MainWindow.show()
-    sys.exit(app.exec_())

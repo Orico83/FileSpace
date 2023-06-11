@@ -12,8 +12,6 @@ FOLDER = "./ServerFolder"
 CHUNK_SIZE = 4096
 HEADER_SIZE = 10
 public_key, private_key = rsa.newkeys(1024)
-SYMMETRIC_KEY = Fernet.generate_key()
-fernet = Fernet(SYMMETRIC_KEY)
 waiting_commands = {}
 connected_users = []
 
@@ -25,51 +23,15 @@ database_config = {
 }
 
 
-def send_data(sock, msg, send_bytes=False):
-    """
-    Sends data over a socket connection.
-
-    :param sock: The socket object representing the connection.
-    :param msg: The message to be sent.
-    :param send_bytes: A boolean flag indicating whether the message is already bytes (default is False).
-    :returns: None
-    """
-    if not send_bytes:
-        msg = msg.encode()
-    msg = fernet.encrypt(msg)
-    msg_len = str(len(msg)).encode()
-    sock.send(fernet.encrypt(msg_len))  # Exactly 100 bytes
-    sock.send(msg)
-
-
-def receive_data(sock, return_bytes=False):
-    """
-    Receives data over a socket connection.
-
-    :param sock: The socket object representing the connection.
-    :param return_bytes: A boolean flag indicating whether the received data should be returned as bytes
-    (default is False).
-    :returns: The received data.
-    """
-    try:
-        data = b''
-        bytes_received = 0
-        msg_len = int(fernet.decrypt(sock.recv(100)).decode())
-        while bytes_received < msg_len:
-            chunk = sock.recv(CHUNK_SIZE)
-            bytes_received += len(chunk)
-            data += chunk
-        data = fernet.decrypt(data)
-        if not return_bytes:
-            data = data.decode()
-        return data
-    except (ConnectionResetError, OSError) as err:
-        print(err)
-        sock.close()
-
-
 class ClientThread(threading.Thread):
+    SYMMETRIC_KEY = Fernet.generate_key()
+
     def __init__(self, client_socket, client_address):
+        """
+        Represents a thread for handling client connections.
+       :param client_socket: The client socket for communication.
+       :param client_address: The address of the client.
+        """
         super().__init__()
         self.mysql_connection = None
         self.username = None
@@ -78,26 +40,32 @@ class ClientThread(threading.Thread):
         self.folder_path = None
         self.friends = []
         self.friend_requests = []
-        self.username_lock = None  # Lock for the username
         self.lock = threading.Lock()
+        self.fernet = Fernet(self.SYMMETRIC_KEY)
 
     def run(self):
+        """
+        Starts the client thread and handles the client connection.
+        :return: None
+        """
         mysql_cursor = None
         mysql_connection = None
         print(f"Connection from {self.client_address}")
         self.client_socket.send(public_key.save_pkcs1("PEM"))
         public_partner = rsa.PublicKey.load_pkcs1(self.client_socket.recv(1024))
         # Encrypt the symmetric key using the client's public key
-        encrypted_symmetric_key = rsa.encrypt(SYMMETRIC_KEY, public_partner)
+        encrypted_symmetric_key = rsa.encrypt(self.SYMMETRIC_KEY, public_partner)
         # Send the encrypted symmetric key to the client
         self.client_socket.send(encrypted_symmetric_key)
         try:
             while True:
                 # Receive the command from the client (login or signup)
                 try:
-                    data = receive_data(self.client_socket)
-                except (OSError, InvalidToken) as err:
-                    print(err)
+                    data = self.receive_data(self.client_socket)
+                    print(f"data: {data}")
+                    if data is None:
+                        raise ValueError
+                except (OSError, InvalidToken, ValueError):
                     print(f"Connection from {self.client_address} closed")
                     break
                 command = data.split()[0]
@@ -117,11 +85,11 @@ class ClientThread(threading.Thread):
                     result = mysql_cursor.fetchone()
                     if result:
                         if self.username in connected_users:
-                            send_data(self.client_socket, "User already connected")
+                            self.send_data(self.client_socket, "User already connected")
                         else:
                             waiting_commands[self.username] = []
                             connected_users.append(self.username)
-                            send_data(self.client_socket, "OK")
+                            self.send_data(self.client_socket, "OK")
                             self.folder_path = os.path.join(FOLDER, self.username)
                             self.friends = [] if result[3] is None else result[3].split(',')
                             self.friend_requests = [] if result[4] is None else result[4].split(',')
@@ -129,7 +97,7 @@ class ClientThread(threading.Thread):
                                                  mysql_cursor)  # Call a method to handle subsequent commands
 
                     else:
-                        send_data(self.client_socket, "FAIL")
+                        self.send_data(self.client_socket, "FAIL")
                 elif command == "signup":
                     # Receive the username and password from the client
                     self.username = data.split()[1]
@@ -139,7 +107,7 @@ class ClientThread(threading.Thread):
                     mysql_cursor.execute("SELECT * FROM users WHERE username = %s", (self.username,))
                     result = mysql_cursor.fetchone()
                     if result:
-                        send_data(self.client_socket, "FAIL")
+                        self.send_data(self.client_socket, "FAIL")
                     else:
                         connected_users.append(self.username)
                         mysql_cursor.execute("INSERT INTO users (username, password) VALUES (%s, %s)",
@@ -147,7 +115,7 @@ class ClientThread(threading.Thread):
                         mysql_connection.commit()
                         self.folder_path = os.path.join(FOLDER, self.username)
                         os.makedirs(self.folder_path)
-                        send_data(self.client_socket, "OK")
+                        self.send_data(self.client_socket, "OK")
                         self.handle_commands(mysql_connection,
                                              mysql_cursor)  # Call a method to handle subsequent commands
         except InvalidToken:
@@ -162,10 +130,16 @@ class ClientThread(threading.Thread):
             print(f"Connection from {self.client_address} closed")
 
     def handle_commands(self, mysql_connection, mysql_cursor):
+        """
+        Handles subsequent commands received from the client.
+        :param mysql_connection: The MySQL connection object.
+        :param mysql_cursor: The MySQL cursor object.
+        :return: None
+        """
         while True:
             # Receive the command from the client
             try:
-                data = receive_data(self.client_socket)
+                data = self.receive_data(self.client_socket)
                 print(data)
             except (InvalidToken, ConnectionError):
                 self.client_socket.close()
@@ -183,15 +157,15 @@ class ClientThread(threading.Thread):
                     os.makedirs(self.folder_path)
                     folder = Directory(self.folder_path)
                 serialized_dir = dumps(folder)
-                send_data(self.client_socket, serialized_dir, send_bytes=True)
+                self.send_data(self.client_socket, serialized_dir, send_bytes=True)
                 print(f"Sent {folder.path} to {self.username}")
             elif data.startswith("get_shared_folders"):
-                send_data(self.client_socket, str(len(get_users_sharing_with_user(self.username))))
+                self.send_data(self.client_socket, str(len(get_users_sharing_with_user(self.username))))
                 for user in get_users_sharing_with_user(self.username):
                     print(f"sending {user} to {self.username}")
                     folder = Directory(os.path.join(FOLDER, user))
                     serialized_dir = dumps(folder)
-                    send_data(self.client_socket, serialized_dir, send_bytes=True)
+                    self.send_data(self.client_socket, serialized_dir, send_bytes=True)
             elif data.startswith("delete_item"):
                 rel_path = data.split("||")[1].strip()
                 item_path = os.path.join(FOLDER, rel_path)
@@ -229,7 +203,7 @@ class ClientThread(threading.Thread):
                 modified_folder = pathlib.Path(rel_path).parts[0]
                 update_command(data, self.username, modified_folder)
             elif data.startswith("upload_dir"):
-                serialized_dir = receive_data(self.client_socket, return_bytes=True)
+                serialized_dir = self.receive_data(self.client_socket, return_bytes=True)
                 directory = loads(serialized_dir)
                 rel_path = data.split("||")[1].strip()  # Extract the relative path
                 location = os.path.join(FOLDER, rel_path)  # Create the target location
@@ -237,9 +211,10 @@ class ClientThread(threading.Thread):
                     directory.create(location)  # Create the directory at the target location
                 print(f"Folder {location} uploaded")
                 modified_folder = pathlib.Path(rel_path).parts[0]  # Get the modified folder name from the relative path
-                update_command((data, serialized_dir), self.username, modified_folder)  # Add the command to waiting_commands
+                update_command((data, serialized_dir), self.username,
+                               modified_folder)  # Add the command to waiting_commands
             elif data.startswith("upload_file"):
-                serialized_file = receive_data(self.client_socket, return_bytes=True)
+                serialized_file = self.receive_data(self.client_socket, return_bytes=True)
                 file = loads(serialized_file)
                 rel_path = data.split("||")[1].strip()
                 file_path = os.path.join(FOLDER, rel_path)
@@ -289,12 +264,13 @@ class ClientThread(threading.Thread):
             elif data.startswith("file_edit"):
                 rel_path = data.split("||")[1]
                 file_path = os.path.join(FOLDER, rel_path)
-                file_data = receive_data(self.client_socket, return_bytes=True)
+                file_data = self.receive_data(self.client_socket, return_bytes=True)
                 # Acquire the lock before opening the file and writing to it
                 with self.lock:
                     with open(file_path, "wb") as f:
                         f.write(file_data)
                 modified_folder = pathlib.Path(rel_path).parts[0]
+                print(f"mf: {modified_folder}")
                 update_command((data, file_data), self.username, modified_folder)
             elif data.startswith("refresh"):
                 with self.lock:
@@ -321,9 +297,9 @@ class ClientThread(threading.Thread):
                         shared_read_write = ','.join(get_shared_read_write(self.username))
                         message = f"{updated_users}||{friends}||{friend_requests}||{sharing_read_only}||" \
                                   f"{sharing_read_write}||{shared_read_only}||{shared_read_write}"
-                        send_data(self.client_socket, message)
+                        self.send_data(self.client_socket, message)
                     except Exception as error:
-                        print(error)
+                        print(error, Exception)
 
             elif data.startswith("add_friend"):
                 new_friend = data.split("||")[1]
@@ -351,9 +327,9 @@ class ClientThread(threading.Thread):
                                          (friend_requests, user))
                     mysql_connection.commit()
                     print(f"{self.username} has sent {user} a friend request")
-                    send_data(self.client_socket, "OK")
+                    self.send_data(self.client_socket, "OK")
                 else:
-                    send_data(self.client_socket, "You've already sent this user a friend request")
+                    self.send_data(self.client_socket, "You've already sent this user a friend request")
             elif data.startswith("rmv_friend_request"):
                 user = data.split('||')[1]
                 self.friend_requests.remove(user)
@@ -380,24 +356,74 @@ class ClientThread(threading.Thread):
                 permissions = data.split("||")[2]
                 if shared_user in get_users_user_is_sharing_with(self.username):
                     remove_row(self.username, shared_user)
-                else:
-                    serialized_dir = receive_data(self.client_socket, return_bytes=True)
+                else:   # user doesn't have the shared folder yet
+                    serialized_dir = self.receive_data(self.client_socket, return_bytes=True)
                     add_to_waiting_commands([shared_user], (data, serialized_dir))
                 if permissions != "remove":
                     insert_user_sharing(self.username, shared_user, permissions)
                     print(f"{self.username} has shared his folder with {shared_user} with {permissions} permissions")
+                else:
+                    add_to_waiting_commands([shared_user], (permissions, self.username))
                 print(f"{self.username} is currently sharing to {get_users_user_is_sharing_with(self.username)}")
             elif data.startswith("request_commands"):
+                print(waiting_commands)
                 if self.username in waiting_commands:
                     commands = dumps(waiting_commands[self.username])
-                    send_data(self.client_socket, commands, send_bytes=True)
+                    self.send_data(self.client_socket, commands, send_bytes=True)
                     waiting_commands[self.username] = []
                 else:
                     commands = dumps([])
-                    send_data(self.client_socket, commands, send_bytes=True)
+                    self.send_data(self.client_socket, commands, send_bytes=True)
 
             else:
-                send_data(self.client_socket, "Invalid command")
+                self.send_data(self.client_socket, "Invalid command")
+
+    def send_data(self, sock, msg, send_bytes=False):
+        """
+        Sends data over a socket connection.
+
+        :param sock: The socket object representing the connection.
+        :param msg: The message to be sent.
+        :param send_bytes: A boolean flag indicating whether the message is already bytes (default is False).
+        :returns: None
+        """
+        try:
+            if not send_bytes:
+                msg = msg.encode()
+            msg = self.fernet.encrypt(msg)
+            msg_len = str(len(msg)).encode()
+            sock.send(self.fernet.encrypt(msg_len))  # Exactly 100 bytes
+            sock.send(msg)
+            sock.recv(1024)
+        except (ConnectionResetError, OSError) as err:
+            print(err)
+            connected_users.remove(self.username)
+            sock.close()
+
+    def receive_data(self, sock, return_bytes=False):
+        """
+        Receives data over a socket connection.
+
+        :param sock: The socket object representing the connection.
+        :param return_bytes: A boolean flag indicating whether the received data should be returned as bytes
+        (default is False).
+        :returns: The received data.
+        """
+        try:
+            data = b''
+            msg_len = int(self.fernet.decrypt(sock.recv(100)).decode())
+            while len(data) < msg_len:
+                chunk = sock.recv(CHUNK_SIZE)
+                data += chunk
+            data = self.fernet.decrypt(data)
+            if not return_bytes:
+                data = data.decode()
+            sock.send(self.fernet.encrypt("OK".encode()))
+            return data
+        except (ConnectionResetError, OSError) as err:
+            print(err)
+            connected_users.remove(self.username)
+            sock.close()
 
 
 def delete_item(item_path):
@@ -459,6 +485,13 @@ def get_users_sharing_with_user(username):
 
 
 def insert_user_sharing(sharing_user, shared_user, permission):
+    """
+    Inserts user sharing information into the database.
+    :param sharing_user: The user sharing the folder.
+    :param shared_user: The user receiving the shared folder.
+    :param permission: The permission level for the shared folder.
+    :return: True if the user sharing information was inserted successfully, False otherwise.
+    """
     try:
         # Connect to the database
         mysql_connection = mysql.connector.connect(**database_config)
@@ -477,6 +510,12 @@ def insert_user_sharing(sharing_user, shared_user, permission):
 
 
 def remove_row(sharing_user, shared_user):
+    """
+    Removes a row from the users_sharing table in the database.
+    :param sharing_user: The user sharing the folder.
+    :param shared_user: The user receiving the shared folder.
+    :return: None
+    """
     # Establish a connection to the MySQL server
     mysql_connection = mysql.connector.connect(**database_config)
     mysql_cursor = mysql_connection.cursor()
@@ -507,6 +546,13 @@ def remove_row(sharing_user, shared_user):
 
 
 def get_permissions(sharing_user, shared_user):
+    """
+    Retrieves the permission level for shared folder between two users.
+
+    :param sharing_user: The user sharing the folder.
+    :param shared_user: The user receiving the shared folder.
+    :return: The permission level.
+    """
     # Establish a connection to the MySQL server
     mysql_connection = mysql.connector.connect(**database_config)
     mysql_cursor = mysql_connection.cursor()
@@ -535,6 +581,11 @@ def get_permissions(sharing_user, shared_user):
 
 
 def get_sharing_read_only(username):
+    """
+    Retrieves a list of users with read-only access to folder shared by the specified user.
+    :param username: The username of the user.
+    :return: A list of users with read-only access.
+    """
     sharing_read_only = []
     users = get_users_user_is_sharing_with(username)
     for shared_user in users:
@@ -544,6 +595,11 @@ def get_sharing_read_only(username):
 
 
 def get_sharing_read_write(username):
+    """
+    Retrieves a list of users with read-write access to folder shared by the specified user.
+    :param username: The username of the user.
+    :return: A list of users with read-write access.
+    """
     sharing_read_write = []
     users = get_users_user_is_sharing_with(username)
     for shared_user in users:
@@ -553,6 +609,11 @@ def get_sharing_read_write(username):
 
 
 def get_shared_read_only(username):
+    """
+    Retrieves a list of users who have shared their folder with the specified user with read-only access.
+    :param username: The username of the user.
+    :return: A list of users who have shared their folder with read-only access.
+    """
     shared_read_only = []
     users = get_users_sharing_with_user(username)
     for sharing_user in users:
@@ -562,6 +623,11 @@ def get_shared_read_only(username):
 
 
 def get_shared_read_write(username):
+    """
+    Retrieves a list of users who have shared their folder with the specified user with read-write access.
+    :param username: The username of the user.
+    :return: A list of users who have shared their folder with read-write access.
+    """
     shared_read_write = []
     users = get_users_sharing_with_user(username)
     for sharing_user in users:

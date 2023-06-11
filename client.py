@@ -1,5 +1,4 @@
-# TODO update file changes - watcher for Read And Write directory
-# TODO when adding a friend, the folders don't update until the client is reopened - send a friend's after he was added
+# TODO fix problems while editing files
 import hashlib
 import os
 import pathlib
@@ -9,11 +8,11 @@ import threading
 import time
 from pickle import loads, dumps
 import rsa
-from cryptography.fernet import Fernet, InvalidToken
-from login_window import UiLogin
-from signup_window import UiSignup
-from PyQt5.QtWidgets import QApplication, QMainWindow, QLineEdit, QWidget, QFileSystemModel, QInputDialog, QMessageBox, \
-    QPushButton
+from cryptography.fernet import Fernet
+from login_window import Ui_Login
+from signup_window import Ui_Signup
+from PyQt5.QtWidgets import QApplication, QMainWindow, QLineEdit, QWidget, QInputDialog, QMessageBox, QPushButton, \
+    QFileSystemModel
 from PyQt5 import QtCore, QtWidgets, QtGui
 from PyQt5.QtCore import Qt, QFileSystemWatcher
 import sys
@@ -30,9 +29,8 @@ CHUNK_SIZE = 4096
 KEYS_TO_DISABLE = [Qt.Key_Space, Qt.Key_Period, Qt.Key_Slash, Qt.Key_Comma, Qt.Key_Semicolon, Qt.Key_Colon, Qt.Key_Bar,
                    Qt.Key_Backslash, Qt.Key_BracketLeft, Qt.Key_BracketRight, Qt.Key_ParenLeft, Qt.Key_ParenRight,
                    Qt.Key_BraceLeft, Qt.Key_BraceRight, Qt.Key_Apostrophe, Qt.Key_QuoteDbl, Qt.Key_Equal, Qt.Key_Plus,
-                   Qt.Key_Minus, Qt.Key_Percent]
+                   Qt.Key_Minus, Qt.Key_Percent, Qt.Key_Question]
 REFRESH_FREQUENCY = 5
-HEADER_SIZE = 10
 NO_FRIENDS = "No Friends Added"
 NO_FRIEND_REQUESTS = "No Friend Requests"
 
@@ -53,6 +51,7 @@ def send_data(sock, msg, send_bytes=False):
     msg_len = str(len(msg)).encode()
     sock.send(fernet.encrypt(msg_len))  # Exactly 100 bytes
     sock.send(msg)
+    sock.recv(1024)
 
 
 def receive_data(sock, return_bytes=False):
@@ -65,24 +64,37 @@ def receive_data(sock, return_bytes=False):
     :returns: The received data.
     """
     data = b''
-    bytes_received = 0
     msg_len = int(fernet.decrypt(sock.recv(100)).decode())
-    while bytes_received < msg_len:
+    while len(data) < msg_len:
         chunk = sock.recv(CHUNK_SIZE)
-        bytes_received += len(chunk)
         data += chunk
     data = fernet.decrypt(data)
     if not return_bytes:
         data = data.decode()
+    sock.send(fernet.encrypt("OK".encode()))
     return data
 
 
 def disable_keys(field):
+    """
+    Disables key events for a QLineEdit field if they're in KEYS_TO_DISABLE.
+
+    :param field: The field object for which the key events should be disabled.
+    :returns: None
+    """
+
     field.keyPressEvent = lambda event: event.ignore() if event.key() in KEYS_TO_DISABLE else QLineEdit.keyPressEvent(
         field, event)
 
 
 def delete_item(item_path):
+    """
+    Deletes a file or folder.
+
+    :param item_path: The path of the item to be deleted.
+    :returns: None
+    """
+
     if os.path.isfile(item_path):
         # Delete a file
         os.remove(item_path)
@@ -91,16 +103,39 @@ def delete_item(item_path):
         shutil.rmtree(item_path)
 
 
-# Example function to rename a file or folder
 def rename_item(item_path, new_name):
+    """
+    Renames a file or folder.
+
+    :param item_path: The path of the item to be renamed.
+    :param new_name: The new name for the item.
+    :returns: None
+    :raises Exception: If an error occurs during the renaming process.
+    """
+    ok = True
     try:
         new_path = os.path.join(os.path.dirname(item_path), new_name)
         os.rename(item_path, new_path)
-    except Exception as err:
-        QMessageBox.warning(widget, "Error", err.args[1])
+    except OSError as err:
+        ok = False
+        item = "file"
+        if os.path.isdir(item_path):
+            item = "folder"
+        QMessageBox.warning(widget, "Error", f"Invalid {item} name.")
+        print(err)
+    return ok
 
 
 def create_fail_label(parent, text, geometry):
+    """
+    Creates a label for displaying failure messages.
+
+    :param parent: The parent widget where the label will be placed.
+    :param text: The text to be displayed in the label.
+    :param geometry: The geometry (position and size) of the label.
+    :returns: The created QLabel object.
+    """
+
     fail_label = QtWidgets.QLabel(parent)
     fail_label.setGeometry(geometry)
     fail_label.setText(text)
@@ -113,14 +148,31 @@ def create_fail_label(parent, text, geometry):
 
 
 def open_file(item_path):
-    # Open the item (assuming it's a file)
+    """
+    Opens a file using the default system application.
+
+    :param item_path: The path of the file to be opened.
+    :returns: None
+    """
+
     if os.path.isfile(item_path):
-        # Open the file using the default system application
         os.startfile(item_path)
 
 
 class MainWindow(QWidget, Ui_MainWindow):
+    """
+    Represents the main window of the application. Inherits from QWidget and Ui_MainWindow.
+    """
+
     def __init__(self, dir_path):
+        """
+        Initializes the MainWindow object.
+
+        Sets up the UI elements, initializes variables, connects signals to slots, & performs necessary configurations.
+
+        :param dir_path: The path of the current directory.
+        :return: None
+        """
         super().__init__()
         self.lock = threading.Lock()
         self.exit = False
@@ -131,7 +183,7 @@ class MainWindow(QWidget, Ui_MainWindow):
         self.read_write_path = os.path.join(READ_WRITE_SHARES, self.username)
         self.read_only_path = os.path.join(READ_ONLY_SHARES, self.username)
         self.file_timestamps = {}
-        self.directory_history = []  # List to store directory history
+        self.directory_history = []  # List to store directory navigation history
         self.read_write_directory_history = [self.read_write_path]
         self.read_only_directory_history = [self.read_only_path]
         self.users = []
@@ -152,11 +204,10 @@ class MainWindow(QWidget, Ui_MainWindow):
         self.list_view.setIconSize(QtCore.QSize(32, 32))
         self.list_view.setGridSize(QtCore.QSize(96, 96))
         self.list_view.setViewMode(QtWidgets.QListView.IconMode)
-        self.set_initial_directory()
+        self.directory_history.append(self.dir_path)
         self.tabs.setCurrentIndex(0)
-        self.upload_files_button.clicked.connect(
-            lambda: self.upload_files(self.model))  # Connect the upload button to the method
-        self.upload_folders_button.clicked.connect(lambda: self.upload_folders(self.model))
+        self.upload_files_button.clicked.connect(lambda: self.upload_file(self.model))
+        self.upload_folders_button.clicked.connect(lambda: self.upload_folder(self.model))
         self.list_view.doubleClicked.connect(self.on_list_view_double_clicked)
         self.list_view.setContextMenuPolicy(QtCore.Qt.CustomContextMenu)
         self.list_view.customContextMenuRequested.connect(lambda event: self.create_context_menu(event, self.list_view))
@@ -167,25 +218,15 @@ class MainWindow(QWidget, Ui_MainWindow):
         self.r_go_back_button.hide()
         self.r_go_back_button.clicked.connect(self.r_go_back)
         self.upload_files_shares_button.hide()
-        self.upload_files_shares_button.clicked.connect(lambda: self.upload_files(self.read_write_model))
+        self.upload_files_shares_button.clicked.connect(lambda: self.upload_file(self.read_write_model))
         self.upload_folders_shares_button.hide()
-        self.upload_folders_shares_button.clicked.connect(lambda: self.upload_folders(self.read_write_model))
-        self.watcher = QFileSystemWatcher()
-        self.watcher.addPath(self.dir_path)
-        self.recursively_add_paths(self.dir_path)  # Add subdirectories to watcher recursively
-        self.watcher.fileChanged.connect(self.file_changed)
-
+        self.upload_folders_shares_button.clicked.connect(lambda: self.upload_folder(self.read_write_model))
         self.friends_list_widget.itemDoubleClicked.connect(self.friend_double_clicked)
         self.friend_requests_list_widget.itemDoubleClicked.connect(self.friend_request_double_clicked)
         self.sharing_read_write_list_widget.itemDoubleClicked.connect(self.sharing_to_double_clicked)
         self.sharing_read_only_list_widget.itemDoubleClicked.connect(self.sharing_to_double_clicked)
         self.search_bar.textChanged.connect(self.search_users)
         self.search_results_list.itemDoubleClicked.connect(self.user_double_clicked)
-        refreshes_thread = threading.Thread(target=self.handle_refreshes)
-        refreshes_thread.start()
-        receive_commands_thread = threading.Thread(target=self.handle_waiting_commands)
-        receive_commands_thread.start()
-        self.get_shared_folders()
         self.read_only_model = QFileSystemModel()
         self.read_only_model.setRootPath(self.read_only_path)
         self.read_only_list_view.setModel(self.read_only_model)
@@ -198,9 +239,26 @@ class MainWindow(QWidget, Ui_MainWindow):
         self.read_write_list_view.setContextMenuPolicy(QtCore.Qt.CustomContextMenu)
         self.read_write_list_view.customContextMenuRequested.connect(
             lambda event: self.create_context_menu(event, self.read_write_list_view))
+        refreshes_thread = threading.Thread(target=self.handle_refreshes)
+        refreshes_thread.start()
+        self.get_shared_folders()
+        self.watcher = QFileSystemWatcher()
+        self.watcher.addPath(self.dir_path)
+        self.recursively_add_paths(self.dir_path)  # Add subdirectories to watcher recursively
+        self.watcher.fileChanged.connect(self.file_changed)
+        self.read_write_watcher = QFileSystemWatcher()
+        self.read_write_watcher.addPath(self.read_write_path)
+        self.recursively_add_paths(self.read_write_path)
+        self.read_write_watcher.fileChanged.connect(self.file_changed)
+        receive_commands_thread = threading.Thread(target=self.handle_waiting_commands)
+        receive_commands_thread.start()
         self.read_write_list_view.doubleClicked.connect(self.on_read_write_list_view_double_clicked)
 
     def get_shared_folders(self):
+        """
+        Retrieves and creates shared folders based on the received data.
+        :returns: None
+        """
         with self.lock:
             send_data(client_socket, "get_shared_folders")
             num = int(receive_data(client_socket))
@@ -213,11 +271,19 @@ class MainWindow(QWidget, Ui_MainWindow):
                     folder.create(os.path.join(self.read_only_path, folder.name))
 
     def handle_waiting_commands(self):
+        """
+        Handles waiting commands by continuously receiving and processing commands.
+        :returns: None
+        """
         while not self.exit:
             self.receive_commands()
             time.sleep(REFRESH_FREQUENCY)
 
     def handle_refreshes(self):
+        """
+        Handles periodic refreshes by triggering the refresh operation.
+        :returns: None
+        """
         while not self.exit:
             self.refresh()
             time.sleep(REFRESH_FREQUENCY)
@@ -234,6 +300,8 @@ class MainWindow(QWidget, Ui_MainWindow):
                 serialized_commands = receive_data(client_socket, return_bytes=True)
                 commands = loads(serialized_commands)
                 print(commands)
+                self.read_write_watcher.blockSignals(True)
+                self.watcher.blockSignals(True)
                 for command in commands:
                     if type(command) is tuple:
                         if command[0].startswith("upload_dir"):
@@ -250,7 +318,6 @@ class MainWindow(QWidget, Ui_MainWindow):
                                 else:
                                     location = os.path.join(self.read_only_path, rel_path)  # Otherwise, use the
                                     # read-only path
-                            print(location)
                             directory.create(location)  # Create the directory at the specified location
                         elif command[0].startswith("upload_file"):
                             rel_path = command[0].split("||")[-1].strip()
@@ -258,13 +325,15 @@ class MainWindow(QWidget, Ui_MainWindow):
                             file = loads(serialized_file)
                             if pathlib.Path(rel_path).parts[0] == self.username:
                                 location = os.path.join(DIRECTORY, rel_path)
+                                watcher_path = self.dir_path
                             else:
                                 if pathlib.Path(rel_path).parts[0] in self.shared_read_write:
                                     location = os.path.join(self.read_write_path, rel_path)
+                                    watcher_path = self.read_write_path
                                 else:
                                     location = os.path.join(self.read_only_path, rel_path)
-                            print(location)
-                            directory.create(file)
+                            file.create(location)
+                            self.recursively_add_paths(watcher_path)
                         elif command[0].startswith("file_edit"):
                             rel_path = command[0].split("||")[-1]
                             file_data = command[1]
@@ -275,6 +344,7 @@ class MainWindow(QWidget, Ui_MainWindow):
                                     file_path = os.path.join(self.read_write_path, rel_path)
                                 else:
                                     file_path = os.path.join(self.read_only_path, rel_path)
+                            print(1)
                             with open(file_path, "wb") as f:
                                 f.write(file_data)
                         elif command[0].startswith("share"):
@@ -286,6 +356,15 @@ class MainWindow(QWidget, Ui_MainWindow):
                             elif permissions == "read_write":
                                 dir_path = os.path.join(self.read_write_path, directory.name)
                             directory.create(dir_path)
+                        elif command[0].startswith("remove"):
+                            sharing_user = command[1]
+                            if sharing_user in self.shared_read_write:
+                                dir_path = os.path.join(self.read_write_path, sharing_user)
+                            elif sharing_user in self.shared_read_only:
+                                dir_path = os.path.join(self.read_only_path, sharing_user)
+                            shutil.rmtree(dir_path)
+                            self.read_write_model.setRootPath(self.read_write_model.rootPath())
+                            self.read_only_model.setRootPath(self.read_only_model.rootPath())
                     elif command.startswith("delete_item"):
                         rel_path = command.split("||")[1].strip()
                         if pathlib.Path(rel_path).parts[0] == self.username:
@@ -315,9 +394,11 @@ class MainWindow(QWidget, Ui_MainWindow):
                         rel_path = command.split("||")[1].strip()
                         if pathlib.Path(rel_path).parts[0] == self.username:
                             new_file_path = os.path.join(DIRECTORY, rel_path)
+                            watcher_path = self.dir_path
                         else:
                             if pathlib.Path(rel_path).parts[0] in self.shared_read_write:
                                 new_file_path = os.path.join(self.read_write_path, rel_path)
+                                watcher_path = self.read_write_path
                             else:
                                 new_file_path = os.path.join(self.read_only_path, rel_path)
                         if os.path.exists(new_file_path):
@@ -325,6 +406,7 @@ class MainWindow(QWidget, Ui_MainWindow):
                             # Create the new file
                         with open(new_file_path, 'w'):
                             pass  # Do nothing, just create an empty file
+                        self.recursively_add_paths(watcher_path)
                         print(f"File {new_file_path} created")
                     elif command.startswith("create_folder"):
                         rel_path = command.split("||")[1].strip()
@@ -384,15 +466,24 @@ class MainWindow(QWidget, Ui_MainWindow):
                         try:
                             # Move the file or folder
                             shutil.move(cut_item_path, destination_path)
+                            if os.path.isfile(destination_path):
+                                self.recursively_add_paths(self.read_write_path)
                             print(f"Moved {cut_item_path} to {destination_path}")
                         except shutil.Error:
                             pass
+                self.read_write_watcher.blockSignals(False)
+                self.watcher.blockSignals(False)
                 print(f"commands:{commands}")
         except OSError as err:
             print(err)
             self.exit = True
 
     def refresh(self):
+        """
+        Refreshes the state of the file sharing application by updating the data based on the received information.
+        :returns: None
+        :raises OSError: If an error occurs during the refresh process.
+        """
         try:
             with self.lock:
                 send_data(client_socket, "refresh")
@@ -440,12 +531,16 @@ class MainWindow(QWidget, Ui_MainWindow):
                         f.change_path(os.path.join(self.read_write_path, folder))
                     elif folder not in self.shared_read_only:
                         shutil.rmtree(os.path.join(self.read_only_path, folder))
-
         except OSError:
             self.exit = True
 
     def friend_double_clicked(self, item):
-        friend_name = item.text()  # Assuming the item is a QListWidgetItem
+        """
+        Handles the action when a friend is double-clicked in the friend list widget.
+        :param item: The selected item representing the friend.
+        :return: None
+        """
+        friend_name = item.text()
         if friend_name == NO_FRIENDS:
             return
         # Create a dialog box
@@ -478,6 +573,11 @@ class MainWindow(QWidget, Ui_MainWindow):
             print("Canceled")
 
     def share_friend(self, friend_name):
+        """
+        Send the server a command to share the user's directory with the selected permissions to a friend.
+        :param friend_name: The name of the friend to share to.
+        :return: None
+        """
         # Create a Directory object to be shared
         directory = Directory(self.dir_path)
         if friend_name in self.sharing_read_write:
@@ -521,6 +621,12 @@ class MainWindow(QWidget, Ui_MainWindow):
             print("Share canceled")
 
     def change_permission(self, shared_user, current_perm):
+        """
+        Changes the sharing permissions for a friend.
+        :param shared_user: The username of the friend.
+        :param current_perm: The current permissions of the friend.
+        :return: None
+        """
         message_box = QMessageBox()
         message_box.setWindowTitle("Change Permission")
         message_box.setText(f"{shared_user} currently has {current_perm} permissions.\nWould you like to change them?")
@@ -567,6 +673,11 @@ class MainWindow(QWidget, Ui_MainWindow):
                 print(f"Removed permissions for {shared_user}")
 
     def sharing_to_double_clicked(self, item):
+        """
+        Handles the action when a user is double-clicked in the sharing list widget.
+        :param item: The selected item representing the user.
+        :return: None
+        """
         user = item.text()
         if user in self.sharing_read_write:
             self.change_permission(user, "read_write")
@@ -574,6 +685,11 @@ class MainWindow(QWidget, Ui_MainWindow):
             self.change_permission(user, "read")
 
     def remove_friend(self, friend_name):
+        """
+        Removes a friend from the friends list and from the friends list widget.
+        :param friend_name: The name of the friend to remove.
+        :return: None
+        """
         if friend_name == NO_FRIENDS:
             return
         print(f"Removing friend: {friend_name}")
@@ -587,6 +703,12 @@ class MainWindow(QWidget, Ui_MainWindow):
         send_data(client_socket, f"remove_friend ||{friend_name}")
 
     def send_friend_request(self, user):
+        """
+        Sends a friend request to a user.
+        :param user: The name of the user to send the friend request to.
+        :return: The response from the server (OK/already sent/already friend).
+        :rtype: str
+        """
         if user not in self.friends:
             send_data(client_socket, f"send_friend_request||{user}")
             print(f"Sent a friend request to {user}")
@@ -596,6 +718,11 @@ class MainWindow(QWidget, Ui_MainWindow):
         return response
 
     def user_double_clicked(self, item):
+        """
+        Opens a message box to send a friend request when a user is double-clicked in the user list widget.
+        :param item: The selected item representing the user.
+        :return: None
+        """
         user = item.text()
         message_box = QMessageBox()
         message_box.setWindowTitle("Send Friend Request")
@@ -613,6 +740,11 @@ class MainWindow(QWidget, Ui_MainWindow):
                 QMessageBox.warning(self, "Error", response)
 
     def add_friend(self, user):
+        """
+        Adds a friend to the friend list and sends command to server.
+        :param user: The name of the user to add as a friend.
+        :return: None
+        """
         self.friends.append(user)
         self.friends_list_widget.clear()
         self.friends_list_widget.addItems(self.friends)
@@ -620,6 +752,11 @@ class MainWindow(QWidget, Ui_MainWindow):
         print(f"added {user}")
 
     def remove_friend_request(self, user):
+        """
+        Removes a friend request from the friend request list and sends command to server.
+        :param user: The name of the user whose friend request is to be removed.
+        :return: None
+        """
         self.friend_requests.remove(user)
         if self.friend_requests:
             index = self.friend_requests_list_widget.currentRow()
@@ -630,26 +767,35 @@ class MainWindow(QWidget, Ui_MainWindow):
         send_data(client_socket, f"rmv_friend_request ||{user}")
 
     def friend_request_double_clicked(self, item):
+        """
+        Handles the action when a friend request is double-clicked in the friend request list.
+        :param item: The selected item representing the friend request.
+        :return: None
+        """
         user = item.text()
         if user == NO_FRIEND_REQUESTS:
             return
-        dialog = QtWidgets.QMessageBox()
-        dialog.setWindowTitle("Add Friend")
-        dialog.setText(f"Add {user} as a friend?")
-        dialog.addButton(QtWidgets.QPushButton("Yes"), QMessageBox.YesRole)
-        dialog.addButton(QtWidgets.QPushButton("No"), QMessageBox.ActionRole)
-        dialog.addButton(QtWidgets.QPushButton("Close"), QMessageBox.ActionRole)
+        message_box = QtWidgets.QMessageBox()
+        message_box.setWindowTitle("Add Friend")
+        message_box.setText(f"Add {user} as a friend?")
+        message_box.addButton(QtWidgets.QPushButton("Yes"), QMessageBox.YesRole)
+        message_box.addButton(QtWidgets.QPushButton("No"), QMessageBox.ActionRole)
+        message_box.addButton(QtWidgets.QPushButton("Close"), QMessageBox.ActionRole)
 
-        dialog.exec_()
-        button = dialog.clickedButton().text()
+        message_box.exec_()
+        button = message_box.clickedButton().text()
 
         if button != "Close":
             self.remove_friend_request(user)
             if button == "Yes":
                 self.add_friend(user)
-                print(1)
 
     def search_users(self, search_text):
+        """
+        Searches for users based on the provided search text and displays the matching results.
+        :param search_text: The text to search for in the list of users.
+        :return: None
+        """
         if not search_text:
             # Clear the current contents of the search results list widget
             self.search_results_list.clear()
@@ -662,13 +808,28 @@ class MainWindow(QWidget, Ui_MainWindow):
             self.search_results_list.addItems(filtered_users)
 
     def recursively_add_paths(self, folder_path):
+        """
+        Recursively adds file paths within the specified folder path to the file watcher and stores their timestamps.
+        :param folder_path: The path of the folder to recursively add file paths from.
+        :return: None
+        """
+        if folder_path == self.dir_path:
+            watcher = self.watcher
+        else:
+            watcher = self.read_write_watcher
+        watcher.removePaths(watcher.files())
         for root, dirs, files in os.walk(folder_path):
             for file in files:
                 path = os.path.join(root, file)
-                self.watcher.addPath(path)
+                watcher.addPath(path)
                 self.file_timestamps[path] = os.path.getmtime(path)
 
     def file_changed(self, path):
+        """
+        Handles the action when a file is changed.
+        :param path: The path of the changed file.
+        :return: None
+        """
         if not os.path.exists(path):
             # File doesn't exist anymore, skip processing
             return
@@ -679,14 +840,22 @@ class MainWindow(QWidget, Ui_MainWindow):
         if previous_timestamp and current_timestamp != previous_timestamp:
             print("File edited:", path)
             file_data = File(path).data
-            file_size = File(path).size
             # Send the file path and its data over the socket
-            send_data(client_socket, f"file_edit ||{os.path.relpath(path, DIRECTORY)}")
+            if FOLDER in path:
+                relative_path = os.path.relpath(path, DIRECTORY)
+            else:
+                relative_path = os.path.relpath(path, self.read_write_path)
+            send_data(client_socket, f"file_edit ||{relative_path}")
             send_data(client_socket, file_data, send_bytes=True)
 
         self.file_timestamps[path] = current_timestamp
 
     def on_list_view_double_clicked(self, index):
+        """
+       Handles the action when an item (file or folder) in the list view (user's folder) is double-clicked.
+       :param index: The index of the double-clicked item.
+       :return: None
+       """
         # Check if the selected index represents a directory
         if self.model.isDir(index):
             # Get the path of the double-clicked directory
@@ -702,6 +871,11 @@ class MainWindow(QWidget, Ui_MainWindow):
             open_file(file_path)
 
     def on_read_write_list_view_double_clicked(self, index):
+        """
+        Handles the action when an item (file or folder) in the read-write shared folders list view is double-clicked.
+        :param index: The index of the double-clicked item.
+        :return: None
+        """
         # Check if the selected index represents a directory
         if self.read_write_model.isDir(index):
             # Get the path of the double-clicked directory
@@ -719,6 +893,11 @@ class MainWindow(QWidget, Ui_MainWindow):
             open_file(file_path)
 
     def on_read_only_list_view_double_clicked(self, index):
+        """
+        Handles the action when an item (file or folder) in the read-only shared folders list view is double-clicked.
+        :param index: The index of the double-clicked item.
+        :return: None
+        """
         # Check if the selected index represents a directory
         if self.read_only_model.isDir(index):
             # Get the path of the double-clicked directory
@@ -734,6 +913,10 @@ class MainWindow(QWidget, Ui_MainWindow):
             open_file(file_path)
 
     def go_back(self):
+        """
+        Navigates back to the previous directory in the file system.
+        :return: None
+        """
         if len(self.directory_history) >= 1:
             # Remove the current directory from the history
             self.directory_history.pop()
@@ -751,6 +934,10 @@ class MainWindow(QWidget, Ui_MainWindow):
             self.go_back_button.show()
 
     def rw_go_back(self):
+        """
+        Navigates back to the previous directory in the read-write widget.
+        :return: None
+        """
         if len(self.read_write_directory_history) >= 1:
             # Remove the current directory from the history
             self.read_write_directory_history.pop()
@@ -772,6 +959,10 @@ class MainWindow(QWidget, Ui_MainWindow):
             self.upload_folders_shares_button.show()
 
     def r_go_back(self):
+        """
+        Navigates back to the previous directory in the read-only widget.
+        :return: None
+        """
         if len(self.read_only_directory_history) >= 1:
             # Remove the current directory from the history
             self.read_only_directory_history.pop()
@@ -788,29 +979,13 @@ class MainWindow(QWidget, Ui_MainWindow):
         else:
             self.r_go_back_button.show()
 
-    def update_directory_history(self, directory_path):
-        # Add the current directory path to the history
-        self.directory_history.append(directory_path)
-
-    def set_initial_directory(self):
-        self.model.setRootPath(self.dir_path)
-        self.list_view.setRootIndex(self.model.index(self.dir_path))
-        self.directory_history.append(self.dir_path)
-
-    def copy_files_or_folders(self, paths, destination_path):
-        for path in paths:
-            if os.path.isfile(path):
-                # Copy a file
-                shutil.copy2(path, destination_path)
-            elif os.path.isdir(path):
-                # Copy a folder
-                folder_name = os.path.basename(path)
-                destination_folder_path = os.path.join(destination_path, folder_name)
-                shutil.copytree(path, destination_folder_path)
-        # Refresh the file system view
-        self.model.setRootPath(self.model.rootPath())
-
     def create_context_menu(self, position, list_view):
+        """
+        Creates a context menu at the specified position in the given list view.
+        :param position: The position where the context menu should be created.
+        :param list_view: The list view where the context menu is being created.
+        :return: None
+        """
         menu = QtWidgets.QMenu()
         temp = self.model.rootPath()
         if list_view == self.read_write_list_view:
@@ -865,14 +1040,28 @@ class MainWindow(QWidget, Ui_MainWindow):
         self.model.setRootPath(temp)
 
     def copy_item(self, item_path):
+        """
+        Saves the path of the item to copy.
+        :param item_path: The path of the selected item.
+        :return: None
+        """
         self.copied_item_path = item_path
         self.cut_item_path = None
 
     def cut_item(self, item_path):
+        """
+        Saves the path of the item to cut.
+        :param item_path: The path of the selected item.
+        :return: None
+        """
         self.cut_item_path = item_path
         self.copied_item_path = None
 
     def paste_item(self):
+        """
+        Pastes the copied or cut item to the current directory and sends command to the server.
+        :return: None
+        """
         destination_path = self.model.rootPath()
         if self.copied_item_path:
             ok = True
@@ -899,6 +1088,8 @@ class MainWindow(QWidget, Ui_MainWindow):
                     rel_des_item_path = os.path.relpath(destination_path, DIRECTORY)
                 else:
                     rel_des_item_path = os.path.relpath(destination_path, self.read_write_path)
+                self.recursively_add_paths(self.dir_path)
+                self.recursively_add_paths(self.read_write_path)
                 send_data(client_socket, f"copy ||{rel_copied_item_path}||{rel_des_item_path}")
         elif self.cut_item_path:
             try:
@@ -921,6 +1112,11 @@ class MainWindow(QWidget, Ui_MainWindow):
         self.model.setRootPath(self.model.rootPath())
 
     def delete_selected_item(self, item_path):
+        """
+        Deletes the selected item at the specified path and sends command to the server.
+        :param item_path: The path of the selected item.
+        :return: None
+        """
         self.model.setRootPath(item_path)
         # Delete the item (file or folder)
         delete_item(item_path)
@@ -934,6 +1130,11 @@ class MainWindow(QWidget, Ui_MainWindow):
         send_data(client_socket, f"delete_item || {relative_path}")
 
     def rename_selected_item(self, item_path):
+        """
+        Renames the selected item at the specified path and sends command to the server.
+        :param item_path: The path of the selected item.
+        :return: None
+        """
         # Open a dialog to get the new name
         self.model.setRootPath(item_path)
         new_name, ok = QInputDialog.getText(self, "Rename Item", "New Name:")
@@ -941,7 +1142,9 @@ class MainWindow(QWidget, Ui_MainWindow):
             if os.path.splitext(new_name)[-1] == '':
                 new_name = new_name + os.path.splitext(item_path)[-1]
             # Rename the item
-            rename_item(item_path, new_name)
+            valid = rename_item(item_path, new_name)
+            if not valid:
+                return
             # Refresh the file system view
             self.model.setRootPath(self.model.rootPath())
             if FOLDER in item_path:
@@ -951,6 +1154,10 @@ class MainWindow(QWidget, Ui_MainWindow):
             send_data(client_socket, f"rename_item || {relative_path} || {new_name}")
 
     def create_new_file(self):
+        """
+        Creates a new file in the current directory and sends command to the server.
+        :return: None
+        """
         # Open a dialog to get the new file name
         file_name, ok = QInputDialog.getText(self, "Create New File", "File Name:")
         parent_path = self.model.rootPath()
@@ -965,20 +1172,32 @@ class MainWindow(QWidget, Ui_MainWindow):
             if os.path.exists(new_file_path):
                 QMessageBox.warning(self, "Error", "A file or directory with the same name already exists.")
                 return
-
-            # Create the new file
-            with open(new_file_path, 'w'):
-                pass  # Do nothing, just create an empty file
+            try:
+                # Create the new file
+                with open(new_file_path, 'w'):
+                    pass  # Do nothing, just create an empty file
+                self.recursively_add_paths(self.dir_path)
+            except OSError:
+                QMessageBox.warning(self, "Error", "Invalid file name.")
+                return
 
             # Refresh the file system view
             self.model.setRootPath(self.model.rootPath())
             if FOLDER in new_file_path:
                 relative_path = os.path.relpath(new_file_path, DIRECTORY)
+                self.recursively_add_paths(self.dir_path)
             else:
                 relative_path = os.path.relpath(new_file_path, self.read_write_path)
+                self.recursively_add_paths(self.read_write_path)
+                print(new_file_path)
+            print(relative_path)
             send_data(client_socket, f"create_file || {relative_path}")
 
     def create_new_directory(self):
+        """
+        Creates a new directory in the current directory and sends command to the server.
+        :return: None
+        """
         # Open a dialog to get the new directory name
         dir_name, ok = QInputDialog.getText(self, "Create New Directory", "Directory Name:")
         parent_path = self.model.rootPath()
@@ -993,9 +1212,12 @@ class MainWindow(QWidget, Ui_MainWindow):
             if os.path.exists(new_dir_path):
                 QMessageBox.warning(self, "Error", "A file or directory with the same name already exists.")
                 return
-
-            # Create the new directory
-            os.makedirs(new_dir_path)
+            try:
+                # Create the new directory
+                os.makedirs(new_dir_path)
+            except OSError:
+                QMessageBox.warning(self, "Error", "Invalid folder name.")
+                return
 
             # Refresh the file system view
             self.model.setRootPath(self.model.rootPath())
@@ -1005,7 +1227,12 @@ class MainWindow(QWidget, Ui_MainWindow):
                 relative_path = os.path.relpath(new_dir_path, self.read_write_path)
             send_data(client_socket, f"create_folder || {relative_path}")
 
-    def upload_folders(self, model):
+    def upload_folder(self, model):
+        """
+        Allows the user to select a folder to upload and sends it to the server.
+        :param model: The model representing the file system view.
+        :return: None
+        """
         directory = QtWidgets.QFileDialog.getExistingDirectory(self, "Select Folder to Upload",
                                                                QtCore.QDir.homePath())
         parent_path = model.rootPath()
@@ -1030,10 +1257,22 @@ class MainWindow(QWidget, Ui_MainWindow):
 
     @staticmethod
     def upload_directory(relative_path, serialized_dir):
+        """
+        Uploads a directory to the server.
+        :param relative_path: The relative path of the directory.
+        :param serialized_dir: The serialized representation of the directory.
+        :return: None
+        """
         send_data(client_socket, f"upload_dir ||{relative_path}")
         send_data(client_socket, serialized_dir, send_bytes=True)
 
-    def upload_files(self, model):
+    def upload_file(self, model):
+        """
+        Allows the user to select a file to upload and sends them to the server.
+
+        :param model: The model representing the file system view.
+        :return: None
+        """
         file_dialog = QtWidgets.QFileDialog(self, "Select File to Upload")
         file_dialog.setFileMode(QtWidgets.QFileDialog.ExistingFiles | QtWidgets.QFileDialog.Directory)
         file_dialog.setOption(QtWidgets.QFileDialog.ShowDirsOnly, False)  # Show both files and directories
@@ -1052,8 +1291,10 @@ class MainWindow(QWidget, Ui_MainWindow):
                 serialized_file = dumps(file)
                 if FOLDER in destination_path:
                     relative_path = os.path.relpath(destination_path, DIRECTORY)
+                    self.recursively_add_paths(self.dir_path)
                 else:
                     relative_path = os.path.relpath(destination_path, self.read_write_path)
+                    self.recursively_add_paths(self.read_write_path)
 
                 send_data(client_socket, f"upload_file||{relative_path}")
                 send_data(client_socket, serialized_file, send_bytes=True)
@@ -1062,19 +1303,36 @@ class MainWindow(QWidget, Ui_MainWindow):
             model.setRootPath(model.rootPath())
 
 
-class LoginWindow(QMainWindow, UiLogin):
+class LoginWindow(QMainWindow, Ui_Login):
+    """
+        Represents the login window of the application. Inherits from QMainWindow and UiLogin.
+        Responsible for the login action.
+    """
+
     def __init__(self):
+        """
+        Initializes the LoginWindow object.
+        Sets up the UI elements, connects button signals to slots, and performs necessary configurations.
+        :return: None
+        """
         super().__init__()
         self.setupUi(self)
         self.login_fail_label.hide()
         self.setWindowTitle("Log In")
         disable_keys(self.username_input)
         disable_keys(self.password_input)
+        self.username_input.setMaxLength(12)
+        self.password_input.setMaxLength(12)
         self.login_button.clicked.connect(self.login)
-
         self.signup_button.clicked.connect(self.goto_signup_screen)
 
     def login(self):
+        """
+       Performs the login operation.
+       Retrieves the username and password from the input fields, sends the login request to the server,
+       receives the server's response, and handles the response accordingly.
+       :return: None
+       """
         username = self.username_input.text()
         password = self.password_input.text()
         if username == '' or password == '':
@@ -1108,19 +1366,37 @@ class LoginWindow(QMainWindow, UiLogin):
 
     @staticmethod
     def goto_signup_screen():
+        """
+        Navigates to the signup screen.
+        :return: None
+        """
         widget.addWidget(SignupWindow())
         widget.setCurrentIndex(widget.currentIndex() + 1)
 
     @staticmethod
     def goto_files(path):
+        """
+        Navigates to the main application screen.
+        :param path: The path to the user's directory.
+        :return: None
+        """
         widget.addWidget((MainWindow(path)))
         widget.setCurrentIndex(widget.currentIndex() + 1)
-        widget.setFixedWidth(840)
-        widget.setFixedHeight(587)
+        widget.setFixedWidth(854)
+        widget.setFixedHeight(605)
 
 
-class SignupWindow(QMainWindow, UiSignup):
+class SignupWindow(QMainWindow, Ui_Signup):
+    """
+    Represents the signup window of the application. Inherits from QMainWindow and UiSignup.
+    """
+
     def __init__(self):
+        """
+        Initializes the SignupWindow object.
+        Sets up the UI elements, connects button signals to slots, and performs necessary configurations.
+        :return: None
+        """
         super().__init__()
         self.setupUi(self)
         self.confirm_fail_label.hide()
@@ -1134,6 +1410,12 @@ class SignupWindow(QMainWindow, UiSignup):
         self.back_button.clicked.connect(self.go_back)
 
     def signup(self):
+        """
+        Performs the signup operation.
+        Retrieves the username, password, and confirm password from the input fields, validates the inputs,
+        sends the signup request to the server, receives the server's response, and handles the response accordingly.
+        :return: None
+        """
         username = self.username_input.text()
         password = self.password_input.text()
         confirm_password = self.confirm_password_input.text()
@@ -1164,14 +1446,24 @@ class SignupWindow(QMainWindow, UiSignup):
 
     @staticmethod
     def go_back():
+        """
+        Navigates back to the previous screen.
+        :return: None
+        """
+        widget.removeWidget(widget.currentWidget())
         widget.setCurrentIndex(widget.currentIndex() - 1)
 
     @staticmethod
     def goto_files(path):
+        """
+       Navigates to the files screen.
+       :param path: The path to the user's directory.
+       :return: None
+       """
         widget.addWidget((MainWindow(path)))
         widget.setCurrentIndex(widget.currentIndex() + 1)
-        widget.setFixedWidth(840)
-        widget.setFixedHeight(587)
+        widget.setFixedWidth(854)
+        widget.setFixedHeight(605)
 
 
 if __name__ == "__main__":

@@ -67,8 +67,7 @@ def main():
             client_thread = ClientThread(client_socket, client_address)
             client_thread.start()
 
-
-        except Exception as err:
+        except ConnectionError as err:
             print(err)
 
 

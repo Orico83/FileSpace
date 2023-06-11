@@ -1,5 +1,4 @@
 import os
-import pickle
 import shutil
 
 FOLDER = r'.\ServerFolder'
@@ -9,9 +8,7 @@ class File:
     def __init__(self, path):
         """
         Initialize a File object.
-
-        Args:
-            path (str): The path to the file.
+        :param path:: The path to the file.
         """
         self.path = path
         self.name = os.path.basename(path)
@@ -23,10 +20,8 @@ class File:
 
     def create(self, parent_path=None):
         """
-        Read and return the contents of the file as bytes.
-
-        Returns:
-            bytes: The contents of the file.
+        Creates the file in the parent path.
+        :param parent_path: path to the file. Defaults to None.
         """
         if "ServerFolder" in self.path:
             self.rel_path = os.path.relpath(self.path, "./ServerFolder")
@@ -35,50 +30,25 @@ class File:
             self.rel_path = self.path.split("Desktop/FS")[-1]
             self.path = os.path.join(FOLDER, self.rel_path)
 
-        data = self.data
         if parent_path is None:
             parent_path = self.path
         if os.path.exists(parent_path):
             file = File(parent_path)
-            if file.data != data:
+            if file.data != self.data:
                 with open(parent_path, 'wb'):
                     pass
                 with open(parent_path, 'wb') as f:
-                    f.write(data)
+                    f.write(self.data)
         else:
             with open(parent_path, 'wb') as f:
                 f.write(self.data)
-
-    def create_in_directory(self, directory_path):
-        """
-        Create the file in the specified directory.
-
-        Args:
-            directory_path (str): The path to the directory where the file will be created.
-        """
-        new_path = os.path.join(directory_path, self.name)
-        self.create(new_path)
-
-    def change_path(self, new_path):
-        """
-        Change the path of the file.
-
-        Args:
-            new_path (str): The new path for the file.
-        """
-        os.makedirs(os.path.dirname(new_path), exist_ok=True)
-        os.rename(self.path, new_path)
-        self.path = new_path
-        self.name = os.path.basename(new_path)
 
 
 class Directory:
     def __init__(self, path):
         """
         Initialize a Directory object.
-
-        Args:
-            path (str): The path to the directory.
+        :param path: The path to the directory.
         """
         self.path = path
         self.name = os.path.basename(path)
@@ -100,9 +70,7 @@ class Directory:
     def create(self, parent_path=None):
         """
         Recursively create the directory and its contents.
-
-        Args:
-            parent_path (str, optional): The parent path for the directory. Defaults to None.
+        :param parent_path:The parent path for the directory. Defaults to None.
         """
         if parent_path is None:
             parent_path = self.path
@@ -129,44 +97,9 @@ class Directory:
             subdirectory.create(os.path.join(parent_path, subdirectory.name))
         return Directory(parent_path)
 
-    def change_file_path(self, file_path, new_path):
-        """
-        Change the path of a file within the directory.
-
-        Args:
-            file_path (str): The current path of the file.
-            new_path (str): The new path for the file.
-        """
-        for file in self.files:
-            if file.path == file_path:
-                file.change_path(new_path)
-                break
-
-        # Update subdirectories recursively
-        for subdirectory in self.subdirectories:
-            subdirectory.change_file_path(file_path, new_path)
-
-    def change_folder_path(self, folder_path, new_path):
-        """
-        Change the path of a subdirectory within the directory.
-
-        Args:
-            folder_path (str): The current path of the subdirectory.
-            new_path (str): The new path for the subdirectory.
-        """
-        for subdirectory in self.subdirectories:
-            if subdirectory.path == folder_path:
-                subdirectory.change_path(new_path)
-                break
-
-        # Update subdirectories recursively
-        for subdirectory in self.subdirectories:
-            subdirectory.change_folder_path(folder_path, new_path)
-
     def change_path(self, new_path):
         """
         Change the path of the directory.
-
         :param new_path: The new path for the directory.
         :returns: None
         """
@@ -177,15 +110,12 @@ class Directory:
         self.path = new_path
         self.name = os.path.basename(new_path)
 
-    def search_files(self, keyword):
+    def search_files(self, keyword):    # Not used yet
         """
         Search for files containing the specified keyword in their names within the directory and its subdirectories.
 
-        Args:
-            keyword (str): The keyword to search for in file names.
-
-        Returns:
-            list: A list of matching File objects.
+        :param keyword: The keyword to search for in file names.
+        :return: A list of matching File objects.
         """
         matching_files = []
         for file in self.files:
@@ -196,13 +126,3 @@ class Directory:
             matching_files.extend(subdirectory.search_files(keyword))
 
         return matching_files
-
-
-def main():
-    d = Directory(r"./FS")
-    print(d.search_files(r"test"))
-    pass
-
-
-if __name__ == '__main__':
-    main()

@@ -1,10 +1,7 @@
-
-
-
 from PyQt5 import QtCore, QtGui, QtWidgets
 
 
-class UiLogin(object):
+class Ui_Login(object):
     def setupUi(self, MainWindow):
         MainWindow.setObjectName("MainWindow")
         MainWindow.resize(460, 600)
@@ -87,13 +84,3 @@ class UiLogin(object):
         self.create_account_label.setText(_translate("MainWindow", "Don\'t have an account?"))
         self.signup_button.setText(_translate("MainWindow", "Sign Up"))
         self.login_fail_label.setText(_translate("MainWindow", "Login Failed - Invalid username or password"))
-
-
-if __name__ == "__main__":
-    import sys
-    app = QtWidgets.QApplication(sys.argv)
-    MainWindow = QtWidgets.QMainWindow()
-    ui = UiLogin()
-    ui.setupUi(MainWindow)
-    MainWindow.show()
-    sys.exit(app.exec_())
