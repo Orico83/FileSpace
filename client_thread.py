@@ -140,7 +140,7 @@ class ClientThread(threading.Thread):
             # Receive the command from the client
             try:
                 data = self.receive_data(self.client_socket)
-                print(data)
+                print(f"{self.username} has sent: {data}")
             except (InvalidToken, ConnectionError):
                 self.client_socket.close()
                 connected_users.remove(self.username)
@@ -371,6 +371,7 @@ class ClientThread(threading.Thread):
                     commands = dumps(waiting_commands[self.username])
                     self.send_data(self.client_socket, commands, send_bytes=True)
                     waiting_commands[self.username] = []
+                    print(waiting_commands)
                 else:
                     commands = dumps([])
                     self.send_data(self.client_socket, commands, send_bytes=True)

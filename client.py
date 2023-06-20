@@ -1,4 +1,3 @@
-# TODO fix problems while editing files
 import hashlib
 import os
 import pathlib
@@ -30,7 +29,7 @@ KEYS_TO_DISABLE = [Qt.Key_Space, Qt.Key_Period, Qt.Key_Slash, Qt.Key_Comma, Qt.K
                    Qt.Key_Backslash, Qt.Key_BracketLeft, Qt.Key_BracketRight, Qt.Key_ParenLeft, Qt.Key_ParenRight,
                    Qt.Key_BraceLeft, Qt.Key_BraceRight, Qt.Key_Apostrophe, Qt.Key_QuoteDbl, Qt.Key_Equal, Qt.Key_Plus,
                    Qt.Key_Minus, Qt.Key_Percent, Qt.Key_Question]
-REFRESH_FREQUENCY = 5
+REFRESH_FREQUENCY = 3
 NO_FRIENDS = "No Friends Added"
 NO_FRIEND_REQUESTS = "No Friend Requests"
 
@@ -300,8 +299,6 @@ class MainWindow(QWidget, Ui_MainWindow):
                 serialized_commands = receive_data(client_socket, return_bytes=True)
                 commands = loads(serialized_commands)
                 print(commands)
-                self.read_write_watcher.blockSignals(True)
-                self.watcher.blockSignals(True)
                 for command in commands:
                     if type(command) is tuple:
                         if command[0].startswith("upload_dir"):
@@ -344,9 +341,9 @@ class MainWindow(QWidget, Ui_MainWindow):
                                     file_path = os.path.join(self.read_write_path, rel_path)
                                 else:
                                     file_path = os.path.join(self.read_only_path, rel_path)
-                            print(1)
                             with open(file_path, "wb") as f:
                                 f.write(file_data)
+                            self.file_timestamps[file_path] = os.path.getmtime(file_path)
                         elif command[0].startswith("share"):
                             permissions = command[0].split("||")[2]
                             serialized_dir = command[1]
@@ -471,8 +468,6 @@ class MainWindow(QWidget, Ui_MainWindow):
                             print(f"Moved {cut_item_path} to {destination_path}")
                         except shutil.Error:
                             pass
-                self.read_write_watcher.blockSignals(False)
-                self.watcher.blockSignals(False)
                 print(f"commands:{commands}")
         except OSError as err:
             print(err)
