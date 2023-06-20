@@ -127,6 +127,7 @@ class ClientThread(threading.Thread):
             self.client_socket.close()
 
             connected_users.remove(self.username)
+            waiting_commands.pop(self.username)
             print(f"Connection from {self.client_address} closed")
 
     def handle_commands(self, mysql_connection, mysql_cursor):
@@ -144,6 +145,8 @@ class ClientThread(threading.Thread):
             except (InvalidToken, ConnectionError):
                 self.client_socket.close()
                 connected_users.remove(self.username)
+                waiting_commands.pop(self.username)
+
                 print(f"Connection from {self.client_address} closed")
                 break
 
@@ -399,6 +402,7 @@ class ClientThread(threading.Thread):
         except (ConnectionResetError, OSError) as err:
             print(err)
             connected_users.remove(self.username)
+            waiting_commands.pop(self.username)
             sock.close()
 
     def receive_data(self, sock, return_bytes=False):
@@ -424,6 +428,7 @@ class ClientThread(threading.Thread):
         except (ConnectionResetError, OSError) as err:
             print(err)
             connected_users.remove(self.username)
+            waiting_commands.pop(self.username)
             sock.close()
 
 

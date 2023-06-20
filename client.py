@@ -1,3 +1,4 @@
+# TODO fix problems with large folders/files uploaded
 import hashlib
 import os
 import pathlib
